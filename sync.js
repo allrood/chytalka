@@ -73,9 +73,34 @@ function mergeAll(base, local, remote){
     settings: merge3(B.settings, local.settings, remote.settings)
   };
 }
+// одна й та сама книжка, додана на різних пристроях окремо (напр. вбудована тестова), має різні id — зливаємо в одну
+const bookKey = b => [String(b.title || '').trim().toLowerCase(), String(b.author || '').trim().toLowerCase(), b.chars || 0].join('|');
+function dedupe(m){
+  const byKey = {}, remap = {};
+  const keepOf = (a, b) => (a.added || '9') < (b.added || '9') || ((a.added || '') === (b.added || '') && a.id < b.id) ? [a, b] : [b, a];
+  const books = [];
+  for (const b of m.books) {
+    const k = bookKey(b), o = byKey[k];
+    if (!o) { byKey[k] = b; books.push(b); continue; }
+    const [keep, drop] = keepOf(o, b), newer = (drop.last || '') > (keep.last || '') ? drop : keep;
+    const merged = { ...keep, read:Math.max(keep.read || 0, drop.read || 0), secs:(keep.secs || 0) + (drop.secs || 0), pos:newer.pos, last:newer.last, finished:keep.finished || drop.finished };
+    books[books.indexOf(o)] = merged; byKey[k] = merged; remap[drop.id] = keep.id;
+  }
+  m.books = books;
+  return remap;
+}
 // застосувати злитий стан на цьому пристрої
-function adopt(m){
+async function adopt(m, remap){
+  // переклади і відкриту книжку з дубля переносимо на книжку, яка залишилась
+  for (const [from, to] of Object.entries(remap || {})) {
+    const a = await api.read('tr-' + from), c = cur && cur.meta.id === from ? cur.tr : null;
+    if (a || c) { const t = { ...(await api.read('tr-' + to) || {}), ...(a || {}), ...(c || {}) }; await api.write('tr-' + to, t); if (c) cur.tr = t; }
+    if (!(await api.read('book-' + to))) { const bk = await api.read('book-' + from); if (bk) await api.write('book-' + to, { ...bk, id:to }); }
+    if (cur && cur.meta.id === from) { const nb = m.books.find(b => b.id === to); if (nb) { const keepPos = cur.meta.pos; cur.meta = Object.assign(library.books.find(b => b.id === to) || {}, nb); cur.meta.pos = nb.pos || keepPos; } }
+    if (vocabBookId === from) vocabBookId = to;
+  }
   const old = Object.fromEntries(library.books.map(b => [b.id, b]));
+  if (cur && !old[cur.meta.id]) old[cur.meta.id] = cur.meta;
   const prevPos = cur ? canon(cur.meta.pos) : null;
   library.books = m.books.map(b => old[b.id] ? Object.assign(old[b.id], b) : b);
   for (const id in old) if (!m.books.some(b => b.id === id)) { api.remove('book-' + id); api.remove('tr-' + id); if (cur && cur.meta.id === id) { cur = null; if (view === 'reader') view = 'home'; } }
@@ -142,8 +167,9 @@ async function syncNow(manual){
       const local = snap(), base = await api.read('sync-base');
       const remote = await dbxGet(DBX_ROOT + '/state.json');
       if (!remote) merged = local;
-      else if (!base && isFresh()) merged = remote.data;           // новий пристрій — беремо все з Dropbox
+      else if (!base && isFresh()) merged = JSON.parse(JSON.stringify(remote.data));   // новий пристрій — беремо все з Dropbox
       else merged = mergeAll(base, local, remote.data);
+      const remap = dedupe(merged);
       if (!remote || !same(merged, remote.data)) {
         const u = await dbxPut(DBX_ROOT + '/state.json', merged, remote && remote.rev);
         if (u.conflict) { merged = null; continue; }
@@ -151,7 +177,8 @@ async function syncNow(manual){
       // якщо поки ми синхронізувались тут щось змінилось — доливаємо ці зміни
       const now = snap(), final = same(now, local) ? merged : mergeAll(local, now, merged);
       if (final !== merged) syncAgain = true;
-      const moved = adopt(final);
+      if (final !== merged) Object.assign(remap, dedupe(final));
+      const moved = await adopt(final, remap);
       await api.write('sync-base', merged);
       if (moved && view === 'reader') { renderReader(); toast('📖 Відкрито місце, де ти зупинився на іншому пристрої', 3500); } else if (view !== 'reader') render(); else updatePills();
       break;

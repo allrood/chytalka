@@ -5,7 +5,7 @@
    ========================================================= */
 (function(){
   if (window.api) return;
-  const WEB_VERSION = '1.2.1';
+  const WEB_VERSION = '1.2.2';
   const DATA_VER = '1';                       // змінити, якщо оновлено словник
 
   /* ---------- IndexedDB як сховище ---------- */
