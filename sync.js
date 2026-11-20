@@ -153,7 +153,7 @@ async function syncNow(manual){
       if (final !== merged) syncAgain = true;
       const moved = adopt(final);
       await api.write('sync-base', merged);
-      if (moved && view === 'reader') renderReader(); else if (view !== 'reader') render(); else updatePills();
+      if (moved && view === 'reader') { renderReader(); toast('📖 Відкрито місце, де ти зупинився на іншому пристрої', 3500); } else if (view !== 'reader') render(); else updatePills();
       break;
     }
     if (!merged) throw new Error('не вдалося записати в Dropbox (конфлікт), спробую ще раз');
@@ -193,14 +193,25 @@ async function syncNow(manual){
     if (syncAgain) { syncAgain = false; scheduleSync(1500); }
   }
 }
-// після змін — не частіше ніж раз на 20 с (читання зберігає час кожні 5 с)
-function scheduleSync(ms){ if (!sync.refresh || syncTimer) return; syncTimer = setTimeout(() => { syncTimer = null; syncNow(false); }, ms || 20000); }
+// після змін — не частіше ніж раз на 20 с (читання зберігає час кожні 5 с); зміна місця читання — через 3 с
+let syncDue = 0;
+function scheduleSync(ms){
+  if (!sync.refresh) return;
+  const due = Date.now() + (ms || 20000);
+  if (syncTimer && syncDue <= due) return;
+  clearTimeout(syncTimer); syncDue = due;
+  syncTimer = setTimeout(() => { syncTimer = null; syncNow(false); }, due - Date.now());
+}
 function autoSync(){ if (sync.refresh && Date.now() - lastAutoSync > 20000) { lastAutoSync = Date.now(); syncNow(false); } }
 window.addEventListener('focus', autoSync);
+// повернулись у програму — одразу підтягуємо місце з іншого пристрою; згорнули — одразу відправляємо своє
+function pushNow(){ if (!sync.refresh) return; if (view === 'reader') savePos(); clearTimeout(syncTimer); syncTimer = null; syncNow(false); }
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible') autoSync();
-  else if (sync.refresh) { if (view === 'reader') savePos(); clearTimeout(syncTimer); syncTimer = null; syncNow(false); }   // закриваємо програму — відправляємо прогрес
+  if (document.visibilityState === 'visible') { if (sync.refresh) { lastAutoSync = Date.now(); syncNow(false); } }
+  else pushNow();
 });
+window.addEventListener('pagehide', pushNow);
+window.addEventListener('blur', () => { if (view === 'reader' && cur && Date.now() - (sync.last || 0) > 5000) pushNow(); });
 setInterval(() => { if (sync.refresh && !syncBusy) syncNow(false); }, 5 * 60000);
 
 // книжка є в бібліотеці, але текст ще не завантажено на цей пристрій

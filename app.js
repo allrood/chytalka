@@ -295,8 +295,9 @@ async function openBook(id, ch, p){
     book.chapters.forEach((c, ci) => { offs[ci] = c.paras.map(pp => { const s = o; o += pp.length; return s; }); });
     cur = { meta, book, offs, tr: await api.read('tr-' + id) || {} };
   }
-  if (ch != null) cur.meta.pos = { ch, p:p || 0 };
-  meta.last = new Date().toISOString(); saveLib();
+  if (ch != null) { cur.meta.pos = { ch, p:p || 0 }; moved(); }
+  // last не чіпаємо: він означає «коли змінилося місце читання», і за ним синхронізація вирішує, чия позиція новіша
+  if (!meta.last) { meta.last = new Date(0).toISOString(); saveLib(); }
   view = 'reader'; render();
 }
 function paraHTML(text, ci, pi){
@@ -341,18 +342,21 @@ function renderReader(){
     </div>`;
   $('#rstatus')?.remove();
   const st = document.createElement('div'); st.className = 'rstatus'; st.id = 'rstatus'; document.body.appendChild(st);
-  $('#chapSel').addEventListener('change', e => { savePos(); cur.meta.pos = { ch:+e.target.value, p:0 }; renderReader(); });
+  $('#chapSel').addEventListener('change', e => { savePos(); cur.meta.pos = { ch:+e.target.value, p:0 }; moved(); renderReader(); });
   // повертаємось на збережене місце (або на останню сторінку, якщо гортали назад з наступного розділу)
   pg.cur = 0;
   requestAnimationFrame(() => {
     layoutPages();
-    if (meta.pos.p === 'end') pg.cur = pg.n - 1; else pg.cur = pageOfPara(meta.pos.p || 0);
+    if (meta.pos.p === 'end') pg.cur = pg.n - 1; else pg.cur = pageOfPos(meta.pos);
+    pg.kept = meta.pos.p === 'end' ? -1 : pg.cur;   // поки не перегорнули — збережене місце не переписуємо (на іншому екрані сторінки інші)
     showPage();
   });
   updateStatus();
 }
 /* ---------- посторінкове листання ---------- */
-const pg = { cur:0, n:1, step:1, gap:60 };
+const pg = { cur:0, n:1, step:1, gap:60, kept:-1 };
+// користувач сам перейшов в інше місце (розділ, слово з вортшатцу) — це найновіша позиція
+function moved(){ cur.meta.last = new Date().toISOString(); if (typeof scheduleSync === 'function') scheduleSync(3000); }
 function layoutPages(){
   const wrap = $('#rwrap'), page = $('#rpage'), t = $('#rtext'); if (!wrap || !t) return;
   const avail = wrap.clientWidth - 2 * (innerWidth <= 700 ? 16 : 56);   // місце для стрілок по боках (на телефоні їх немає)
@@ -367,6 +371,13 @@ function layoutPages(){
   pg.cur = Math.min(pg.cur, pg.n - 1);
 }
 function relX(el, end){ const t = $('#rtext'), rs = el.getClientRects(); if (!rs.length) return 0; return (end ? rs[rs.length - 1].right : rs[0].left) - t.getBoundingClientRect().left; }
+// сторінка, на якій стоїть збережене місце: абзац p, слово з відступом o всередині абзацу
+function pageOfPos(pos){
+  const el = document.querySelector(`#rtext [data-p="${pos.p || 0}"]`); if (!el) return 0;
+  let tgt = el;
+  if (pos.o) { for (const w of el.querySelectorAll('.w')) { tgt = w; if (+w.dataset.o >= pos.o) break; } }
+  return Math.min(pg.n - 1, Math.max(0, Math.floor((relX(tgt) + 2) / pg.step)));
+}
 function pageOfPara(p){ const el = document.querySelector(`#rtext [data-p="${p}"]`); return el ? Math.min(pg.n - 1, Math.max(0, Math.floor((relX(el) + 2) / pg.step))) : 0; }
 function showPage(){
   const t = $('#rtext'); if (!t) return;
@@ -377,15 +388,15 @@ function showPage(){
 function turnPage(d){
   if (view !== 'reader' || !cur) return;
   const ch = cur.meta.pos.ch, n = cur.book.chapters.length;
-  if (pg.cur + d >= 0 && pg.cur + d < pg.n) { pg.cur += d; showPage(); return; }
-  if (d > 0 && ch < n - 1) { savePos(); cur.meta.pos = { ch:ch + 1, p:0 }; renderReader(); }
-  else if (d < 0 && ch > 0) { savePos(); cur.meta.pos = { ch:ch - 1, p:'end' }; renderReader(); }
+  if (pg.cur + d >= 0 && pg.cur + d < pg.n) { pg.cur += d; pg.kept = -1; showPage(); return; }
+  if (d > 0 && ch < n - 1) { savePos(); cur.meta.pos = { ch:ch + 1, p:0 }; moved(); renderReader(); }
+  else if (d < 0 && ch > 0) { savePos(); cur.meta.pos = { ch:ch - 1, p:'end' }; moved(); renderReader(); }
 }
 // після зміни шрифту, розміру вікна чи перекладу: перерахувати сторінки, лишаючись на тому ж абзаці
 function relayoutKeepPage(){ if (view === 'reader' && $('#rtext')) { layoutPages(); $('#rtext').style.transform = `translateX(${-pg.cur * pg.step}px)`; updateStatus(); } }
 function relayoutKeep(){
   if (view !== 'reader' || !cur || !$('#rtext')) return;
-  const p = cur.meta.pos.p; layoutPages(); pg.cur = pageOfPara(typeof p === 'number' ? p : 0); showPage();
+  const pos = cur.meta.pos; layoutPages(); pg.cur = typeof pos.p === 'number' ? pageOfPos(pos) : 0; pg.kept = pg.cur; showPage();
 }
 let rzT = null;
 window.addEventListener('resize', () => { clearTimeout(rzT); rzT = setTimeout(relayoutKeep, 150); });
@@ -426,8 +437,21 @@ function trackRead(){
     if (b <= endX + 1) readTo = +el.dataset.p; else if (a > endX) break;
   }
   if (pg.cur >= pg.n - 1) readTo = +ps[ps.length-1].dataset.p;
-  const p = top !== null ? top : cover;
-  if (p !== null && p !== cur.meta.pos.p) { cur.meta.pos.p = p; cur.meta.last = new Date().toISOString(); }
+  // місце читання = перше слово на сторінці (абзац + відступ), щоб на іншому пристрої відкрилася та сама сторінка
+  if (pg.kept !== pg.cur) {
+    let first = null;
+    for (const el of ps) {
+      const pi = +el.dataset.p; if (cover !== null && pi < cover) continue;
+      for (const w of el.querySelectorAll('.w')) { if (relX(w) >= start - 2) { first = w; break; } }
+      if (first || relX(el) > endX) break;
+    }
+    const np = first ? +first.closest('[data-p]').dataset.p : (top !== null ? top : cover), no = first ? +first.dataset.o : 0;
+    if (np !== null && (np !== cur.meta.pos.p || no !== (cur.meta.pos.o || 0))) {
+      cur.meta.pos = { ch, p:np, o:no }; cur.meta.last = new Date().toISOString();
+      if (typeof scheduleSync === 'function') scheduleSync(3000);   // місце передаємо швидко
+    }
+    pg.kept = pg.cur;
+  }
   if (readTo >= 0) {
     const c = cur.book.chapters[ch];
     const end = cur.offs[ch][readTo] + c.paras[readTo].length;
@@ -890,7 +914,7 @@ document.addEventListener('click', async e => {
     library.books = library.books.filter(x => x.id !== m.id); api.remove('book-' + m.id); api.remove('tr-' + m.id);
     if (cur && cur.meta.id === m.id) cur = null; saveLib(true); render(); return;
   }
-  if (d.chap) { savePos(); cur.meta.pos = { ch:+d.chap, p:0 }; renderReader(); return; }
+  if (d.chap) { savePos(); cur.meta.pos = { ch:+d.chap, p:0 }; moved(); renderReader(); return; }
   if (d.pg) { turnPage(+d.pg); return; }
   if (d.par) { settings.parallel = d.par === '1'; saveSettings(); savePos(); renderReader(); return; }
   if (d.font) { settings.font = Math.max(14, Math.min(30, settings.font + +d.font)); saveSettings(); document.documentElement.style.setProperty('--rf', settings.font + 'px'); relayoutKeep(); return; }
@@ -940,7 +964,7 @@ document.addEventListener('click', async e => {
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape') closePop();
   if (view === 'reader' && !e.target.closest('input,select,textarea') && cur) {
-    if (e.altKey && (e.key === 'ArrowRight' || e.key === 'ArrowLeft')) { const n = cur.meta.pos.ch + (e.key === 'ArrowRight' ? 1 : -1); if (n >= 0 && n < cur.book.chapters.length) { savePos(); cur.meta.pos = { ch:n, p:0 }; renderReader(); } e.preventDefault(); return; }
+    if (e.altKey && (e.key === 'ArrowRight' || e.key === 'ArrowLeft')) { const n = cur.meta.pos.ch + (e.key === 'ArrowRight' ? 1 : -1); if (n >= 0 && n < cur.book.chapters.length) { savePos(); cur.meta.pos = { ch:n, p:0 }; moved(); renderReader(); } e.preventDefault(); return; }
     if (e.target.closest('button') && (e.key === ' ' || e.key === 'Enter')) return;
     if (['ArrowRight','ArrowDown','PageDown'].includes(e.key) || (e.key === ' ' && !e.shiftKey)) { e.preventDefault(); turnPage(1); }
     else if (['ArrowLeft','ArrowUp','PageUp'].includes(e.key) || (e.key === ' ' && e.shiftKey)) { e.preventDefault(); turnPage(-1); }
