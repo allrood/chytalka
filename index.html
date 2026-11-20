@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https:;">
+<meta name="theme-color" content="#2c303c">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Читалка">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-180.png">
+<title>Моя читалка</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="top">
+  <div class="brand"><span class="logo">📖</span><span class="bname">Моя читалка</span></div>
+  <div class="spacer"></div>
+  <div class="pill" id="goalPill"></div>
+  <div class="pill" id="yearPill"></div>
+  <button class="pill sync" id="syncPill" data-act="syncpill"></button>
+</header>
+<aside class="side">
+  <button class="nav" data-view="home">🏠 <span>Бібліотека</span></button>
+  <button class="nav" data-view="reader">📖 <span>Читання</span></button>
+  <button class="nav" data-view="vocab">🧠 <span>Вортшатц</span></button>
+  <button class="nav" data-view="mywords">★ <span>Мої слова</span></button>
+  <button class="nav" data-view="settings">⚙ <span>Налаштування</span></button>
+  <div class="sidefoot" id="sideFoot"></div>
+</aside>
+<div id="banner" class="banner hidden"></div>
+<main id="main"><div class="loading">Завантаження словника…</div></main>
+<div id="pop" class="pop hidden"></div>
+<div id="toast"></div>
+<script src="web-api.js"></script>
+<script src="app.js"></script>
+<script src="sync.js"></script>
+</body>
+</html>
