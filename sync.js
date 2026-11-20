@@ -279,18 +279,21 @@ async function linkCode(withKeys){
 }
 // RD1 — код читалки (може містити ключ Gemini), HZ1 — код зі «Звичок» (той самий Dropbox)
 async function joinByCode(given){
-  const raw = String(given || $('#linkInp')?.value || '').replace(/\s+/g, '');
+  const raw = String(given || [...document.querySelectorAll('.linkInp')].map(i => i.value).find(v => v.trim()) || '').replace(/\s+/g, '');
   const m = raw.match(/(RD1|HZ1)\.([A-Za-z0-9_-]+)/);
+  let o;
   try {
     if (!m) throw 0;
     const b = atob(m[2].replace(/-/g, '+').replace(/_/g, '/'));
-    const o = JSON.parse(new TextDecoder().decode(Uint8Array.from(b, c => c.charCodeAt(0))));
+    o = JSON.parse(new TextDecoder().decode(Uint8Array.from(b, c => c.charCodeAt(0))));
     if (!o.r || (o.k && o.k !== DBX_APP_KEY)) throw 0;
-    if (o.g && !(await api.getSecret('gemini'))) await api.setSecret('gemini', o.g);
-    await setRefresh(o.r); delete sync.verifier;
-    toast('Підключаю…'); await syncNow(true);
-    if (view === 'settings') renderSettings();
-  } catch (e) { toast('Код не схожий на код з комп\'ютера. Скопіюй його ще раз повністю.', 4000); }
+  } catch (e) { toast(raw ? 'Код обрізаний або не той. Скопіюй його на ПК ще раз повністю (RD1.… або HZ1.…)' : 'Встав код з комп\'ютера', 5000); return false; }
+  if (o.g && !(await api.getSecret('gemini'))) await api.setSecret('gemini', o.g);
+  await setRefresh(o.r); delete sync.verifier; syncSave();
+  toast('Підключаю…', 8000); await syncNow(true);
+  paintJoin(); if (view === 'settings') renderSettings(); else render();
+  if (sync.status === 'ok') toast('✓ Синхронізацію підключено', 3000);
+  return true;
 }
 
 /* ---------- вигляд ---------- */
@@ -309,7 +312,8 @@ function syncPanelBody(){
   return `<div class="cap">Щоб книжки, прогрес і слова були однакові на ПК і на телефоні. Дані лежатимуть у твоєму Dropbox, у папці «Програми». Безкоштовно.</div>
     <div class="row"><button class="btn primary" data-act="dbxauth">Підключити Dropbox</button></div>
     <div class="syncbox"><b>Уже є код або посилання з іншого пристрою?</b><div class="hint" style="margin:4px 0 8px">Підходить код читалки (RD1.…) і код зі «Звичок» (HZ1.…): вони користуються тим самим Dropbox.</div>
-      <div class="row"><input class="inp" id="linkInp" placeholder="RD1.… або HZ1.…" style="flex:1;min-width:180px"><button class="btn primary" data-act="dbxjoin">Підключити</button></div></div>`;
+      <div class="row"><input class="inp linkInp" id="linkInp" placeholder="RD1.… або HZ1.…" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" style="flex:1;min-width:180px"><button class="btn primary" data-act="dbxjoin">Підключити</button></div>
+      ${navigator.clipboard && navigator.clipboard.readText ? '<div class="row" style="margin-top:6px"><button class="btn" data-act="dbxpaste">📋 Вставити з буфера й підключити</button></div>' : ''}</div>`;
 }
 function paintSync(){
   const p = $('#syncPill');
@@ -334,17 +338,46 @@ async function syncAction(a){
     case 'dbxlink': showLink = true; paintSync(); return true;
     case 'dbxlinkhide': showLink = false; paintSync(); return true;
     case 'dbxjoin': joinByCode(); return true;
+    case 'dbxpaste': try { const t = await navigator.clipboard.readText(); if (/(RD1|HZ1)\./.test(t || '')) joinByCode(t); else toast('У буфері немає коду. Скопіюй посилання чи код на ПК ще раз', 5000); } catch (e) { toast('Не вдалося прочитати буфер. Встав код у поле вручну (натисни в полі → «Вставити»)', 5000); } return true;
+    case 'joinhide': try { sessionStorage.setItem('chytalka-joinhide', '1'); } catch (e) {} paintJoin(); return true;
+    case 'copycode': { const c = pendingCode; if (c) { await api.copy(c); toast('Код скопійовано. Тепер додай читалку на початковий екран', 4000); } return true; }
     case 'dbxcopy': await api.copy(await linkCode($('#linkKeys')?.checked)); toast('Код скопійовано'); return true;
     case 'dbxcopylink': await api.copy(WEB_URL + '#' + await linkCode($('#linkKeys')?.checked)); toast('Посилання скопійовано. Перешли його собі на телефон', 4000); return true;
     case 'dbxoff': if (confirm('Відключити синхронізацію на цьому пристрої? Дані тут і в Dropbox залишаться.')) { await setRefresh(''); sync = {}; syncSave(); api.remove('sync-base'); paintSync(); toast('Синхронізацію вимкнено'); } return true;
   }
   return false;
 }
+/* ---------- телефон: програма з іконки має окреме від Safari сховище ---------- */
+const standalone = () => !!(navigator.standalone || (window.matchMedia && matchMedia('(display-mode: standalone)').matches));
+const isPhone = () => /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+let pendingCode = '';
+// на веб-версії без підключення — помітна плашка з полем для коду
+function paintJoin(){
+  const b = $('#joinSlot'); if (!b || !appInfo.web) return;
+  let hide = false; try { hide = sessionStorage.getItem('chytalka-joinhide') === '1'; } catch (e) {}
+  if (pendingCode && !standalone() && isPhone()) {
+    b.innerHTML = `<div class="joinbox"><b>✓ Підключено в Safari. Тепер зроби читалку програмою:</b>
+      <ol><li>Натисни «Скопіювати код» нижче.</li><li>«Поділитися» <span class="hint">(квадрат зі стрілкою)</span> → «На початковий екран».</li><li>Відкрий читалку з іконки й натисни «📋 Вставити з буфера й підключити». Програма з іконки має окреме сховище, тому її треба підключити ще раз.</li></ol>
+      <div class="row"><button class="btn primary" data-act="copycode">Скопіювати код</button><button class="btn plain" data-act="joinhide">Сховати</button></div></div>`;
+    return;
+  }
+  if (!sync.refresh && !hide) {
+    b.innerHTML = `<div class="joinbox"><b>☁ Синхронізацію з ПК не підключено</b><div class="hint" style="margin:3px 0 8px">На ПК: читалка → ⟳ → «📱 Підключити телефон» → «Лише код». Встав код сюди.</div>
+      <div class="row"><input class="inp linkInp" placeholder="RD1.… або HZ1.…" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" style="flex:1;min-width:150px"><button class="btn primary" data-act="dbxjoin">Підключити</button></div>
+      <div class="row" style="margin-top:6px">${navigator.clipboard && navigator.clipboard.readText ? '<button class="btn" data-act="dbxpaste">📋 Вставити з буфера й підключити</button>' : ''}<button class="btn plain" data-act="joinhide">Пізніше</button></div></div>`;
+    return;
+  }
+  b.innerHTML = '';
+}
 async function syncStart(){
   await syncLoad(); preparePkce();
   // посилання виду …/#RD1.… підключає пристрій одразу; код не йде на сервер і прибирається з адреси
   const m = location.hash.match(/(RD1|HZ1)\.[A-Za-z0-9_-]+/);
-  if (m) { history.replaceState(null, '', location.pathname + location.search); if (!sync.refresh) { joinByCode(m[0]); return; } }
-  paintSync();
+  if (m) {
+    history.replaceState(null, '', location.pathname + location.search);
+    pendingCode = m[0];
+    if (!sync.refresh) { await joinByCode(m[0]); paintJoin(); return; }
+  }
+  paintSync(); paintJoin();
   if (sync.refresh) syncNow(false);
 }

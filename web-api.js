@@ -5,7 +5,7 @@
    ========================================================= */
 (function(){
   if (window.api) return;
-  const WEB_VERSION = '1.2.2';
+  const WEB_VERSION = '1.2.3';
   const DATA_VER = '1';                       // змінити, якщо оновлено словник
 
   /* ---------- IndexedDB як сховище ---------- */
@@ -111,6 +111,19 @@
     info: async () => ({ version:WEB_VERSION, userData:'', web:true })
   };
 
+  // програма з іконки на iPhone може показувати стару версію з кешу: якщо на сайті новіша — чистимо кеш і перезавантажуємо (один раз)
+  window.webHardReload = async () => {
+    try { const ks = await caches.keys(); await Promise.all(ks.filter(k => k.startsWith('chytalka-')).map(k => caches.delete(k))); } catch (e) {}
+    try { const rs = await navigator.serviceWorker.getRegistrations(); for (const r of rs) await r.update().catch(() => {}); } catch (e) {}
+    location.reload();
+  };
+  (async () => {
+    try {
+      const r = await fetch('version.json?t=' + Date.now(), { cache:'no-store' }); if (!r.ok) return;
+      const v = (await r.json()).v;
+      if (v && v !== WEB_VERSION) { const k = 'chytalka-reloaded-' + v; if (!sessionStorage.getItem(k)) { sessionStorage.setItem(k, '1'); window.webHardReload(); } }
+    } catch (e) {}
+  })();
   // офлайн-робота: service worker кешує сторінку
   if ('serviceWorker' in navigator && location.protocol === 'https:') addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
 })();

@@ -249,7 +249,7 @@ function renderHome(){
   const y = new Date().getFullYear(), fin = finishedIn(y), v = dayVal(todayKey()), g = goalVal();
   const last = library.books.filter(b => b.last).sort((a,b) => b.last.localeCompare(a.last))[0];
   const st = goalStreak();
-  $('#main').innerHTML = `
+  $('#main').innerHTML = `<div id="joinSlot"></div>
     <div class="homegrid">
       <div class="panel"><div class="today">${ring(v, g)}
         <div><div class="hint">Сьогодні</div><div class="big">${settings.goalType === 'pages' ? v.toFixed(1) : Math.round(v)} <span class="hint" style="font-size:14px">/ ${g} ${unit()}</span></div>
@@ -267,6 +267,7 @@ function renderHome(){
       <div class="yearlist">${fin.length ? fin.sort((a,b) => b.finished.localeCompare(a.finished)).map(b => `<div><span>${esc(b.title)}${b.author ? ' · <span class="hint">' + esc(b.author) + '</span>' : ''}</span><span class="hint">${short(b.finished)}.${b.finished.slice(0,4)}</span></div>`).join('') : '<span class="hint">Ще немає. Книжка вважається прочитаною, коли дочитаєш до кінця або позначиш вручну.</span>'}</div>
       ${yearsArchive(y)}
     </div>`;
+  if (typeof paintJoin === 'function') paintJoin();
 }
 function yearsArchive(y){
   const ys = [...new Set(library.books.filter(b => b.finished).map(b => +b.finished.slice(0,4)))].filter(x => x !== y).sort((a,b) => b-a);
@@ -872,7 +873,7 @@ async function renderSettings(){
       </div>
       <div class="panel" id="syncPanel"><h3>☁ Синхронізація з телефоном</h3>${syncPanelBody()}</div>
       ${appInfo.web ? `<div class="panel"><h3>💾 Дані</h3><div class="hint">Версія ${esc(appInfo.version || '')} (веб). Дані зберігаються в цьому браузері й у Dropbox, якщо підключено синхронізацію.</div>
-        <div class="row" style="margin-top:10px"><button class="btn" data-act="backup">Експорт резервної копії</button><button class="btn" data-act="restore">Імпорт</button></div></div>` : `<div class="panel"><h3>💾 Дані та оновлення</h3>
+        <div class="row" style="margin-top:10px"><button class="btn" data-act="backup">Експорт резервної копії</button><button class="btn" data-act="restore">Імпорт</button><button class="btn" data-act="webreload">↻ Оновити програму</button></div></div>` : `<div class="panel"><h3>💾 Дані та оновлення</h3>
         <div class="hint">Версія ${esc(appInfo.version || '')}. Дані: <code>${esc(appInfo.userData || '')}</code>. Щодня автоматично робиться резервна копія.</div>
         <div class="row" style="margin-top:10px"><button class="btn" data-act="opendata">Відкрити папку з даними</button><button class="btn" data-act="backup">Експорт резервної копії</button><button class="btn" data-act="restore">Імпорт</button></div>
         <div class="row" style="margin-top:10px"><button class="btn" data-act="checkupd">Перевірити оновлення</button><button class="btn" data-act="pickupd">Встановити оновлення з файлу…</button></div>
@@ -958,6 +959,7 @@ document.addEventListener('click', async e => {
     case 'checkupd': { const u = await api.checkUpdate(); if (u.available) showUpdate(u.available); else toast(`У тебе найновіша версія (${u.current}). Файлів оновлення не знайдено.`, 3500); break; }
     case 'pickupd': { const r = await api.installUpdate(null); if (r.ok) toast(`Встановлюю версію ${r.version}, програма перезапуститься…`, 5000); else if (!r.canceled) toast(r.error, 6000); break; }
     case 'installupd': { const r = await api.installUpdate(d.path); if (r.ok) toast(`Встановлюю версію ${r.version}, програма перезапуститься…`, 5000); else toast(r.error, 6000); break; }
+    case 'webreload': toast('Оновлюю…'); if (window.webHardReload) window.webHardReload(); break;
     case 'hideupd': $('#banner').classList.add('hidden'); break;
   }
 });

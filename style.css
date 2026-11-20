@@ -177,3 +177,7 @@ code{background:#2d3140;padding:1px 6px;border-radius:4px;font-size:12px}
   .pop{left:0 !important;right:0;top:auto !important;bottom:0;width:auto;max-height:62vh;border-radius:16px 16px 0 0;padding:14px 16px calc(16px + env(safe-area-inset-bottom))}
   .pop .acts .btn.sm{padding:8px 11px;font-size:13px}
 }
+
+.joinbox{width:100%}
+.joinbox ol{margin:6px 0 8px 18px;padding:0;font-size:13px;color:#d6d0f5}
+#joinSlot .joinbox{background:#3a3550;border:1px solid var(--accent);border-radius:12px;padding:12px 14px;margin-bottom:14px}
