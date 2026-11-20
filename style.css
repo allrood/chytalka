@@ -185,3 +185,8 @@ code{background:#2d3140;padding:1px 6px;border-radius:4px;font-size:12px}
 .joinbox{width:100%}
 .joinbox ol{margin:6px 0 8px 18px;padding:0;font-size:13px;color:#d6d0f5}
 #joinSlot .joinbox{background:#3a3550;border:1px solid var(--accent);border-radius:12px;padding:12px 14px;margin-bottom:14px}
+
+/* паралельний переклад шматками: шматки одного абзацу йдуть щільніше */
+.rtext p.cut{margin-bottom:.35em}
+.rtext p.cont{text-indent:0}
+.rtext p.cut + .tr{margin-bottom:.7em}

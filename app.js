@@ -301,15 +301,42 @@ async function openBook(id, ch, p){
   if (!meta.last) { meta.last = new Date(0).toISOString(); saveLib(); }
   view = 'reader'; render();
 }
-function paraHTML(text, ci, pi){
-  let out = '', last = 0;
-  text.replace(WORD_RE, (m, off) => {
+// абзац → шматки по 2–4 речення (залежно від довжини) для паралельного перекладу: [[від, до], …]
+const chunkCache = new Map();
+function chunksOf(text){
+  if (chunkCache.has(text)) return chunkCache.get(text);
+  const ends = []; const re = /[.!?…]+[»«"“”'’)\]]*(?=\s+[^\s])/g; let m;
+  while ((m = re.exec(text))) ends.push(m.index + m[0].length);
+  ends.push(text.length);
+  const sents = []; let s0 = 0;
+  for (const e of ends) { if (e > s0) { sents.push([s0, e]); s0 = e; } }
+  const out = []; let cs = 0, n = 0;
+  sents.forEach(([a, b], i) => {
+    n++;
+    const len = b - cs, last = i === sents.length - 1;
+    if (last || (n >= 2 && len >= 220) || n >= 4 || len >= 420) { out.push([cs, b]); cs = b; n = 0; }
+  });
+  // занадто короткий хвіст приєднуємо до попереднього шматка
+  if (out.length > 1 && out[out.length - 1][1] - out[out.length - 1][0] < 90) { const t = out.pop(); out[out.length - 1][1] = t[1]; }
+  chunkCache.set(text, out);
+  return out;
+}
+function paraHTML(text, ci, pi, from = 0, to = text.length){
+  let out = '', last = from;
+  text.slice(0, to).replace(WORD_RE, (m, off) => {
+    if (off < from) return m;
     out += esc(text.slice(last, off));
     const lw = lookup(m)[0];
     out += `<span class="w${lw && words.star[lw.l] ? ' star' : ''}" data-o="${off}">${esc(m)}</span>`;
     last = off + m.length; return m;
   });
-  return out + esc(text.slice(last));
+  return out + esc(text.slice(last, to));
+}
+// абзац у режимі паралельного перекладу: кожен шматок — окремий блок із перекладом під ним
+function paraParallel(t, ch, i){
+  const cs = chunksOf(t);
+  if (cs.length <= 1) return `<p data-p="${i}">${paraHTML(t, ch, i)}</p>${trSlot(ch, i)}`;
+  return cs.map(([a, b], j) => `<p data-p="${i}" data-e="${b}" class="${j ? 'cont' : ''}${j < cs.length - 1 ? ' cut' : ''}">${paraHTML(t, ch, i, a, b).trim()}</p>${trSlot(ch, i, j)}`).join('');
 }
 function renderReader(){
   if (!cur) {
@@ -335,7 +362,7 @@ function renderReader(){
     <div class="rwrap" id="rwrap">
       <button class="pgbtn prev" data-pg="-1" title="Попередня сторінка (←)">‹</button>
       <div class="rpage" id="rpage"><div class="rtext" id="rtext" lang="${esc(meta.lang || 'de')}">
-      ${c.paras.map((t,i) => heads.has(i) ? `<h3 class="rh" data-p="${i}">${paraHTML(t, ch, i)}</h3>` : `<p data-p="${i}">${paraHTML(t, ch, i)}</p>${settings.parallel ? trSlot(ch, i) : ''}`).join('')}
+      ${c.paras.map((t,i) => heads.has(i) ? `<h3 class="rh" data-p="${i}">${paraHTML(t, ch, i)}</h3>` : (settings.parallel ? paraParallel(t, ch, i) : `<p data-p="${i}">${paraHTML(t, ch, i)}</p>`)).join('')}
       <div class="chapnav">${ch > 0 ? `<button class="btn" data-chap="${ch-1}">← ${esc(book.chapters[ch-1].title.slice(0,40))}</button>` : '<span></span>'}
         ${ch < book.chapters.length-1 ? `<button class="btn primary" data-chap="${ch+1}">${esc(book.chapters[ch+1].title.slice(0,40))} →</button>` : `<button class="btn primary" data-finish="${meta.id}">${meta.finished ? '✓ Книжку прочитано' : '🏁 Позначити книжку прочитаною'}</button>`}</div>
       </div></div>
@@ -376,7 +403,7 @@ function relX(el, end){ const t = $('#rtext'), rs = el.getClientRects(); if (!rs
 function pageOfPos(pos){
   const el = document.querySelector(`#rtext [data-p="${pos.p || 0}"]`); if (!el) return 0;
   let tgt = el;
-  if (pos.o) { for (const w of el.querySelectorAll('.w')) { tgt = w; if (+w.dataset.o >= pos.o) break; } }
+  if (pos.o) { for (const w of document.querySelectorAll(`#rtext [data-p="${pos.p || 0}"] .w`)) { tgt = w; if (+w.dataset.o >= pos.o) break; } }
   return Math.min(pg.n - 1, Math.max(0, Math.floor((relX(tgt) + 2) / pg.step)));
 }
 function pageOfPara(p){ const el = document.querySelector(`#rtext [data-p="${p}"]`); return el ? Math.min(pg.n - 1, Math.max(0, Math.floor((relX(el) + 2) / pg.step))) : 0; }
@@ -416,9 +443,15 @@ window.addEventListener('wheel', e => {
   const now = Date.now(); if (now - wheelT < 350 || Math.abs(e.deltaY) + Math.abs(e.deltaX) < 4) return;
   wheelT = now; turnPage((e.deltaY || e.deltaX) > 0 ? 1 : -1);
 }, { passive:false });
-function trSlot(ch, i){
-  const t = cur.tr[ch + '.' + i];
-  return `<div class="tr ${t ? '' : 'wait'}" data-tr="${ch}.${i}">${t ? esc(t) : '…'}</div>`;
+function trSlot(ch, i, j){
+  const k = ch + '.' + i + (j != null ? '.' + j : ''), t = cur.tr[k];
+  return `<div class="tr ${t ? '' : 'wait'}" data-tr="${k}">${t ? esc(t) : '…'}</div>`;
+}
+// текст для ключа перекладу: «розділ.абзац» або «розділ.абзац.шматок»
+function trText(k){
+  const [c, p, j] = k.split('.').map(Number), t = cur.book.chapters[c].paras[p];
+  if (isNaN(j)) return t;
+  const [a, b] = chunksOf(t)[j]; return t.slice(a, b).trim();
 }
 function updateStatus(){
   const st = $('#rstatus'); if (!st || !cur) return;
@@ -430,14 +463,14 @@ function trackRead(){
   if (view !== 'reader' || !cur) return;
   const ps = document.querySelectorAll('#rtext [data-p]'); if (!ps.length) return;
   const ch = cur.meta.pos.ch, start = pg.cur * pg.step, endX = start + pg.step - pg.gap / 2;
-  let top = null, cover = null, readTo = -1;
+  let top = null, cover = null, readTo = -1, readE = null;
   for (const el of ps) {
     const a = relX(el), b = relX(el, true);
     if (top === null && a >= start - 2 && a < endX) top = +el.dataset.p;
     if (cover === null && b > start) cover = +el.dataset.p;
-    if (b <= endX + 1) readTo = +el.dataset.p; else if (a > endX) break;
+    if (b <= endX + 1) { readTo = +el.dataset.p; readE = el.dataset.e ? +el.dataset.e : null; } else if (a > endX) break;
   }
-  if (pg.cur >= pg.n - 1) readTo = +ps[ps.length-1].dataset.p;
+  if (pg.cur >= pg.n - 1) { readTo = +ps[ps.length-1].dataset.p; readE = null; }
   // місце читання = перше слово на сторінці (абзац + відступ), щоб на іншому пристрої відкрилася та сама сторінка
   if (pg.kept !== pg.cur) {
     let first = null;
@@ -455,7 +488,7 @@ function trackRead(){
   }
   if (readTo >= 0) {
     const c = cur.book.chapters[ch];
-    const end = cur.offs[ch][readTo] + c.paras[readTo].length;
+    const end = cur.offs[ch][readTo] + (readE != null ? readE : c.paras[readTo].length);
     if (end > cur.meta.read) {
       const delta = end - cur.meta.read;
       if (delta <= 25000) { day(todayKey()).c += delta; saveStats(); }   // великі стрибки (перехід по змісту) не рахуємо
@@ -481,7 +514,7 @@ async function pumpTr(){
   trBusy = true;
   const keys = [...trQueue].slice(0, prov === 'deepl' ? 20 : 6); keys.forEach(k => trQueue.delete(k));
   const bookId = cur.meta.id;
-  const texts = keys.map(k => { const [c,p] = k.split('.').map(Number); return cur.book.chapters[c].paras[p]; });
+  const texts = keys.map(trText);
   try {
     const res = prov === 'deepl' ? await deepl(texts) : await aiParas(texts);
     if (cur && cur.meta.id === bookId) {
