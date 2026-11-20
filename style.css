@@ -141,7 +141,11 @@ code{background:#2d3140;padding:1px 6px;border-radius:4px;font-size:12px}
 
 /* телефон */
 @media (max-width:700px){
-  body{font-size:15px;-webkit-text-size-adjust:100%;overflow-x:hidden}
+  html,body{overscroll-behavior:none;touch-action:pan-x pan-y;width:100%;max-width:100vw}
+  *{touch-action:pan-x pan-y}   /* без збільшення двома пальцями і подвійним дотиком; швидкі дотики не губляться */
+  body{font-size:15px;-webkit-text-size-adjust:100%;text-size-adjust:100%;overflow-x:hidden}
+  input,select,textarea,.inp,select.inp{font-size:16px !important}   /* інакше iPhone збільшує сторінку при натисканні на поле */
+  body.reading{position:fixed;inset:0;height:100dvh;overflow:hidden}
   .seg{max-width:100%}
   .row{min-width:0}
   .rtitle,.ba,.bt{overflow-wrap:anywhere}

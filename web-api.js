@@ -5,7 +5,7 @@
    ========================================================= */
 (function(){
   if (window.api) return;
-  const WEB_VERSION = '1.2.3';
+  const WEB_VERSION = '1.2.4';
   const DATA_VER = '1';                       // змінити, якщо оновлено словник
 
   /* ---------- IndexedDB як сховище ---------- */
@@ -124,6 +124,9 @@
       if (v && v !== WEB_VERSION) { const k = 'chytalka-reloaded-' + v; if (!sessionStorage.getItem(k)) { sessionStorage.setItem(k, '1'); window.webHardReload(); } }
     } catch (e) {}
   })();
+  // без масштабування жестами (iPhone іноді ігнорує user-scalable=no)
+  ['gesturestart','gesturechange','gestureend'].forEach(ev => document.addEventListener(ev, e => e.preventDefault(), { passive:false }));
+  document.addEventListener('touchmove', e => { if (e.touches.length > 1 || (e.scale && e.scale !== 1)) e.preventDefault(); }, { passive:false });
   // офлайн-робота: service worker кешує сторінку
   if ('serviceWorker' in navigator && location.protocol === 'https:') addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
 })();
