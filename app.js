@@ -338,6 +338,13 @@ function paraParallel(t, ch, i){
   if (cs.length <= 1) return `<p data-p="${i}">${paraHTML(t, ch, i)}</p>${trSlot(ch, i)}`;
   return cs.map(([a, b], j) => `<p data-p="${i}" data-e="${b}" class="${j ? 'cont' : ''}${j < cs.length - 1 ? ' cut' : ''}">${paraHTML(t, ch, i, a, b).trim()}</p>${trSlot(ch, i, j)}`).join('');
 }
+// «Поруч»: оригінал зліва, переклад справа (лише на широкому екрані)
+const sideMode = () => settings.parallel === 'side' && innerWidth > 900;
+function paraSide(t, ch, i){
+  const cs = chunksOf(t);
+  if (cs.length <= 1) return `<div class="pr"><p data-p="${i}">${paraHTML(t, ch, i)}</p>${trSlot(ch, i)}</div>`;
+  return cs.map(([a, b], j) => `<div class="pr${j ? ' cont' : ''}${j < cs.length - 1 ? ' cut' : ''}"><p data-p="${i}" data-e="${b}">${paraHTML(t, ch, i, a, b).trim()}</p>${trSlot(ch, i, j)}</div>`).join('');
+}
 function renderReader(){
   if (!cur) {
     const last = library.books.filter(b => b.last).sort((a,b) => b.last.localeCompare(a.last))[0] || library.books[0];
@@ -354,7 +361,7 @@ function renderReader(){
       <span class="rtitle" title="${esc(book.title)}">${esc(book.title)}</span>
       <select class="inp" id="chapSel" style="max-width:260px">${book.chapters.map((x,i) => `<option value="${i}" ${i === ch ? 'selected' : ''}>${esc(x.title.slice(0,60))}</option>`).join('')}</select>
       <div class="spacer"></div>
-      <div class="seg"><button class="${settings.parallel ? '' : 'on'}" data-par="0">Переклад по кліку</button><button class="${settings.parallel ? 'on' : ''}" data-par="1">Паралельний переклад</button></div>
+      <div class="seg"><button class="${settings.parallel ? '' : 'on'}" data-par="0">Переклад по кліку</button><button class="${settings.parallel && !sideMode() ? 'on' : ''}" data-par="1" title="Переклад під кожними 2–4 реченнями">Паралельний</button>${innerWidth > 900 ? `<button class="${sideMode() ? 'on' : ''}" data-par="2" title="Оригінал зліва, переклад справа; наведи мишку — підсвітиться пара">Поруч</button>` : ''}</div>
       <button class="btn sm" data-font="-1" title="Менший шрифт">A−</button><button class="btn sm" data-font="1" title="Більший шрифт">A+</button>
       <div class="seg">${[['dark','Темна'],['sepia','Сепія'],['light','Світла']].map(([t,l]) => `<button class="${settings.theme === t ? 'on' : ''}" data-theme="${t}">${l}</button>`).join('')}</div>
       ${settings.parallel ? `<button class="btn sm" data-pre="ask" title="Перекласти розділ або всю книжку заздалегідь і зберегти">⤓ Перекласти наперед</button>` : ''}
@@ -362,8 +369,8 @@ function renderReader(){
     </div>
     <div class="rwrap" id="rwrap">
       <button class="pgbtn prev" data-pg="-1" title="Попередня сторінка (←)">‹</button>
-      <div class="rpage" id="rpage"><div class="rtext" id="rtext" lang="${esc(meta.lang || 'de')}">
-      ${c.paras.map((t,i) => heads.has(i) ? `<h3 class="rh" data-p="${i}">${paraHTML(t, ch, i)}</h3>` : (settings.parallel ? paraParallel(t, ch, i) : `<p data-p="${i}">${paraHTML(t, ch, i)}</p>`)).join('')}
+      <div class="rpage" id="rpage"><div class="rtext${sideMode() ? ' sbs' : ''}" id="rtext" lang="${esc(meta.lang || 'de')}">
+      ${c.paras.map((t,i) => heads.has(i) ? `<h3 class="rh" data-p="${i}">${paraHTML(t, ch, i)}</h3>` : (sideMode() ? paraSide(t, ch, i) : settings.parallel ? paraParallel(t, ch, i) : `<p data-p="${i}">${paraHTML(t, ch, i)}</p>`)).join('')}
       <div class="chapnav">${ch > 0 ? `<button class="btn" data-chap="${ch-1}">← ${esc(book.chapters[ch-1].title.slice(0,40))}</button>` : '<span></span>'}
         ${ch < book.chapters.length-1 ? `<button class="btn primary" data-chap="${ch+1}">${esc(book.chapters[ch+1].title.slice(0,40))} →</button>` : `<button class="btn primary" data-finish="${meta.id}">${meta.finished ? '✓ Книжку прочитано' : '🏁 Позначити книжку прочитаною'}</button>`}</div>
       </div></div>
@@ -389,7 +396,7 @@ function moved(){ cur.meta.last = new Date().toISOString(); if (typeof scheduleS
 function layoutPages(){
   const wrap = $('#rwrap'), page = $('#rpage'), t = $('#rtext'); if (!wrap || !t) return;
   const avail = wrap.clientWidth - 2 * (innerWidth <= 700 ? 16 : 56);   // місце для стрілок по боках (на телефоні їх немає)
-  const w = Math.max(280, Math.min(settings.width, avail));
+  const w = Math.max(280, Math.min(sideMode() ? Math.round(settings.width * 1.75) : settings.width, avail));
   page.style.width = w + 'px';
   t.style.columnWidth = w + 'px'; t.style.columnGap = pg.gap + 'px';
   pg.step = w + pg.gap;
@@ -428,7 +435,7 @@ function relayoutKeep(){
   const pos = cur.meta.pos; layoutPages(); pg.cur = typeof pos.p === 'number' ? pageOfPos(pos) : 0; pg.kept = pg.cur; showPage();
 }
 let rzT = null;
-window.addEventListener('resize', () => { clearTimeout(rzT); rzT = setTimeout(relayoutKeep, 150); });
+window.addEventListener('resize', () => { clearTimeout(rzT); rzT = setTimeout(() => { const t = $('#rtext'); if (view === 'reader' && t && t.classList.contains('sbs') !== sideMode()) { savePos(); renderReader(); } else relayoutKeep(); }, 150); });
 // свайп вліво/вправо на телефоні
 let tch = null;
 window.addEventListener('touchstart', e => { if (view === 'reader' && e.touches.length === 1 && e.target.closest('#rwrap')) tch = { x:e.touches[0].clientX, y:e.touches[0].clientY, t:Date.now() }; else tch = null; }, { passive:true });
@@ -1005,7 +1012,7 @@ document.addEventListener('click', async e => {
   if (d.pg) { turnPage(+d.pg); return; }
   if (d.retr) { if (!cur) return; delete cur.tr[d.retr]; if (typeof sync !== 'undefined') { sync.trDirty = sync.trDirty || {}; sync.trDirty[cur.meta.id] = 1; } setTr(d.retr, '…', true); trFail = 0; trQueue.add(d.retr); pumpTr(); return; }
   if (d.pre) { pretranslate(d.pre); return; }
-  if (d.par) { settings.parallel = d.par === '1'; saveSettings(); savePos(); renderReader(); return; }
+  if (d.par) { settings.parallel = d.par === '2' ? 'side' : d.par === '1'; saveSettings(); savePos(); renderReader(); return; }
   if (d.font) { settings.font = Math.max(14, Math.min(30, settings.font + +d.font)); saveSettings(); document.documentElement.style.setProperty('--rf', settings.font + 'px'); relayoutKeep(); return; }
   if (d.theme) { settings.theme = d.theme; saveSettings(); document.body.className = 'th-' + settings.theme + ' reading'; document.querySelectorAll('[data-theme]').forEach(x => x.classList.toggle('on', x.dataset.theme === d.theme)); return; }
   if (d.scope) { vocabScope = d.scope; renderVocab(); return; }

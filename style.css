@@ -194,3 +194,13 @@ code{background:#2d3140;padding:1px 6px;border-radius:4px;font-size:12px}
 .rtext .tr{position:relative;padding-right:22px}
 .rtext .trre{position:absolute;right:0;top:0;border:0;background:none;color:var(--rtr);opacity:.35;cursor:pointer;font-size:13px;padding:0 3px;line-height:1.5}
 .rtext .trre:hover{opacity:1}
+
+/* «Поруч»: оригінал зліва, переклад справа, наведення підсвічує пару */
+.rtext.sbs .pr{display:grid;grid-template-columns:minmax(0,57fr) minmax(0,43fr);gap:0 26px;break-inside:avoid;border-radius:6px;margin:0 -8px .55em;padding:3px 8px;transition:background .12s}
+.rtext.sbs .pr.cut{margin-bottom:.15em}
+.rtext.sbs .pr p{margin:0}
+.rtext.sbs .pr .tr{margin:0;padding:0 22px 0 12px;font-size:.8em;line-height:1.55;align-self:start}
+.rtext.sbs .pr:hover{background:rgba(167,139,250,.13)}
+.rtext.sbs .pr:hover .tr{color:var(--rtext);border-left-color:var(--accent)}
+.rtext.sbs .pr .trre{right:0}
+.rtext.sbs h3.rh{column-span:none}
