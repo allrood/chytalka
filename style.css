@@ -209,3 +209,11 @@ code{background:#3f4244;padding:1px 6px;border-radius:4px;font-size:12px}
 .rtext.sbs .pr:hover .tr{color:var(--rtext);border-left-color:var(--accent)}
 .rtext.sbs .pr .trre{right:0}
 .rtext.sbs h3.rh{column-span:none}
+
+/* меню «Перекласти наперед» */
+.premenu{position:fixed;z-index:35;width:min(460px,calc(100vw - 16px));background:#47494b;border:1px solid var(--border);border-radius:10px;box-shadow:0 14px 40px rgba(0,0,0,.5);padding:12px 14px}
+.premenu .hint{margin-bottom:8px}
+.pmrow{display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:6px 0;border-top:1px solid var(--border)}
+.pmrow b{width:100%;font-size:12.5px}
+.pmrow .btn{display:inline-flex;flex-direction:column;align-items:flex-start;line-height:1.25}
+.pmrow .btn small{font-weight:400;opacity:.75;font-size:11px}

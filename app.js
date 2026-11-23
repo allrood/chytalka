@@ -460,26 +460,18 @@ function trKeysOf(ci){
 }
 // переклад наперед: зберігається і через синхронізацію потрапляє на телефон
 let preRun = null;
-async function pretranslate(scope){
+async function pretranslate(scope, only){
   if (!cur) return;
   if (preRun) { preRun.stop = true; toast('Зупиняю…'); return; }
   const prov = await providerFor('tr');
   if (!prov) { toast('Додай ключ ' + (appInfo.web ? 'Gemini' : 'DeepL') + ' у налаштуваннях'); return; }
   let ap = await altProvider(); if (ap === 'ai2') ap = null;   // той самий Gemini двічі наперед не перекладаємо
   const ch = cur.meta.pos.ch, chs = scope === 'book' ? cur.book.chapters.map((_, i) => i) : [ch];
-  if (scope === 'ask') {
-    const left = (ci, alt) => trKeysOf(ci).filter(k => !cur.tr[alt ? altKey(k) : k]).reduce((a, k) => a + trText(k).length, 0);
-    const book = alt => cur.book.chapters.reduce((a, _, i) => a + left(i, alt), 0);
-    const nCh = left(ch) + (ap ? left(ch, 1) : 0), nBook = book() + (ap ? book(1) : 0);
-    if (!nBook) { toast('Уся книжка вже перекладена'); return; }
-    const pv = provName(prov) + (ap ? ' (основний) і ' + provName(ap) + ' (інший варіант)' : '');
-    const wantBook = confirm(`Перекласти наперед через ${pv}?\n\nOK — усю книжку (${fmt(book())} знаків)\nСкасувати — лише цей розділ (${fmt(left(ch))} знаків)` + (prov === 'deepl' || ap === 'deepl' ? '\n\nБезкоштовний DeepL дає 500 000 знаків на місяць.' : ''));
-    if (!wantBook && !nCh) { toast('Цей розділ уже перекладено'); return; }
-    return pretranslate(wantBook ? 'book' : 'chapter');
-  }
   const all = chs.flatMap(trKeysOf);
-  const jobs = [{ prov, alt:false, ks:all.filter(k => !cur.tr[k]) }];
-  if (ap) jobs.push({ prov:ap, alt:true, ks:all.filter(k => !cur.tr[altKey(k)]) });
+  const jobs = [];
+  if (only !== 'alt') jobs.push({ prov, alt:false, ks:all.filter(k => !cur.tr[k]) });
+  if (ap && only !== 'main') jobs.push({ prov:ap, alt:true, ks:all.filter(k => !cur.tr[altKey(k)]) });
+  if (!jobs.some(j => j.ks.length)) { toast('Тут уже все перекладено'); return; }
   const run = preRun = { stop:false }, bookId = cur.meta.id, res0 = [];
   for (const job of jobs) {
     const step = job.prov === 'deepl' ? 40 : 8, nm = provName(job.prov) + (job.alt ? ' (інший варіант)' : '');
@@ -504,6 +496,29 @@ async function pretranslate(scope){
   if (view === 'reader') relayoutKeepPage();
   toast(`Перекладено наперед: ${res0.join(', ') || 'нічого нового'}. Переклади збережено${typeof sync !== 'undefined' && sync.refresh ? ' і вони синхронізуються на телефон' : ''}.`, 6000);
 }
+// меню «Перекласти наперед»: який перекладач (основний / інший варіант / обидва) і скільки (розділ / книжка)
+async function preMenu(btn){
+  if (preRun) { pretranslate(); return; }
+  if ($('#preMenu')) { closePreMenu(); return; }
+  if (!cur) return;
+  const prov = await providerFor('tr');
+  if (!prov) { toast('Додай ключ ' + (appInfo.web ? 'Gemini' : 'DeepL') + ' у налаштуваннях'); return; }
+  let ap = await altProvider(); if (ap === 'ai2') ap = null;
+  const ch = cur.meta.pos.ch;
+  const left = (cis, alt) => cis.flatMap(trKeysOf).filter(k => !cur.tr[alt ? altKey(k) : k]).reduce((a, k) => a + trText(k).length, 0);
+  const scopes = [['chapter', 'Цей розділ', [ch]], ['book', 'Уся книжка', cur.book.chapters.map((_, i) => i)]];
+  const cell = (sc, only, label, n) => n ? `<button class="btn sm" data-prego="${sc}:${only}">${label}<small>${fmt(n)} зн.</small></button>` : `<button class="btn sm" disabled>${label}<small>готово ✓</small></button>`;
+  const rows = scopes.map(([sc, title, cis]) => {
+    const nm = left(cis), na = ap ? left(cis, 1) : 0;
+    return `<div class="pmrow"><b>${title}</b>${cell(sc, 'main', provName(prov), nm)}${ap ? cell(sc, 'alt', provName(ap) + ' (⇄ інший)', na) + (nm || na ? `<button class="btn sm primary" data-prego="${sc}:both">Обидва</button>` : '') : ''}</div>`;
+  }).join('');
+  const m = document.createElement('div'); m.id = 'preMenu'; m.className = 'premenu';
+  m.innerHTML = `<div class="hint">Перекладається лише те, чого ще немає. Знаки — скільки залишилось.${prov === 'deepl' || ap === 'deepl' ? ' DeepL безкоштовно: 500 000 знаків на місяць.' : ''}</div>${rows}`;
+  document.body.appendChild(m);
+  const r = btn.getBoundingClientRect();
+  m.style.top = (r.bottom + 6) + 'px'; m.style.left = Math.max(8, Math.min(r.right - m.offsetWidth, innerWidth - m.offsetWidth - 8)) + 'px';
+}
+function closePreMenu(){ const m = $('#preMenu'); if (m) m.remove(); }
 // альтернативний переклад: інший перекладач (DeepL ↔ Gemini); зберігається поруч під ключем «ключ~» і синхронізується
 const altKey = k => k + '~';
 const provName = p => p === 'deepl' ? 'DeepL' : 'Gemini';
@@ -1049,6 +1064,7 @@ document.addEventListener('click', async e => {
   const w = e.target.closest('.rtext .w');
   if (w) { const was = popCtx && popCtx.el === w; if (popCtx) closePop(); if (!was) openPop(w); return; }
   if (!e.target.closest('#pop') && popCtx) { closePop(); return; }
+  if ($('#preMenu') && !e.target.closest('#preMenu,[data-pre]')) closePreMenu();
   // дотик/клік по краях сторінки гортає: ліва третина — назад, права — вперед
   if (view === 'reader' && e.target.closest('#rwrap') && !e.target.closest('button,a,select')) {
     const r = $('#rwrap').getBoundingClientRect(), x = (e.clientX - r.left) / r.width;
@@ -1073,7 +1089,8 @@ document.addEventListener('click', async e => {
   if (d.pg) { turnPage(+d.pg); return; }
   if (d.retr) { if (!cur) return; if (trAltOn.has(d.retr)) { delete cur.tr[altKey(d.retr)]; markTrDirty(); trAltOn.delete(d.retr); toggleAlt(d.retr); return; } delete cur.tr[d.retr]; markTrDirty(); setTr(d.retr, '…', true); trFail = 0; trQueue.add(d.retr); pumpTr(); return; }
   if (d.alt) { toggleAlt(d.alt); return; }
-  if (d.pre) { pretranslate(d.pre); return; }
+  if (d.pre) { preMenu(e.target.closest('[data-pre]')); return; }
+  if (d.prego) { closePreMenu(); const [sc, only] = d.prego.split(':'); pretranslate(sc, only === 'both' ? undefined : only); return; }
   if (d.par) { settings.parallel = d.par === '2' ? 'side' : d.par === '1'; saveSettings(); savePos(); renderReader(); return; }
   if (d.font) { settings.font = Math.max(14, Math.min(30, settings.font + +d.font)); saveSettings(); document.documentElement.style.setProperty('--rf', settings.font + 'px'); relayoutKeep(); return; }
   if (d.theme) { settings.theme = d.theme; saveSettings(); document.body.className = 'th-' + settings.theme + ' reading'; document.querySelectorAll('[data-theme]').forEach(x => x.classList.toggle('on', x.dataset.theme === d.theme)); return; }
