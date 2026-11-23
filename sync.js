@@ -200,7 +200,8 @@ async function syncNow(manual){
     for (const b of library.books) {
       const id = b.id, local = (cur && cur.meta.id === id ? cur.tr : await api.read('tr-' + id)) || {};
       const n = Object.keys(local).length;
-      if (remoteTr[id] === sync.tr[id] && n === sync.trN[id]) continue;   // нічого нового
+      const dirty = (sync.trDirty || {})[id];
+      if (remoteTr[id] === sync.tr[id] && n === sync.trN[id] && !dirty) continue;   // нічого нового
       let all = local, rev = remoteTr[id] || null, remoteN = remoteTr[id] ? (sync.trN[id] || 0) : 0;
       if (remoteTr[id] && remoteTr[id] !== sync.tr[id]) {
         const g = await dbxGet(`${DBX_ROOT}/tr/${id}.json`);
@@ -208,8 +209,8 @@ async function syncNow(manual){
       }
       const total = Object.keys(all).length;
       if (total !== n) { if (cur && cur.meta.id === id) { Object.assign(cur.tr, all); if (view === 'reader' && settings.parallel) renderReader(); } await api.write('tr-' + id, all); }
-      if (total > remoteN) { const u = await dbxPut(`${DBX_ROOT}/tr/${id}.json`, all, rev); if (u.conflict) { syncAgain = true; continue; } rev = u.rev; }
-      sync.tr[id] = rev; sync.trN[id] = total;
+      if (total > remoteN || dirty) { const u = await dbxPut(`${DBX_ROOT}/tr/${id}.json`, all, rev); if (u.conflict) { syncAgain = true; continue; } rev = u.rev; }
+      sync.tr[id] = rev; sync.trN[id] = total; if (sync.trDirty) delete sync.trDirty[id];
     }
     sync.last = Date.now(); sync.err = null; sync.status = 'ok';
   } catch (e) {

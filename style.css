@@ -190,3 +190,7 @@ code{background:#2d3140;padding:1px 6px;border-radius:4px;font-size:12px}
 .rtext p.cut{margin-bottom:.35em}
 .rtext p.cont{text-indent:0}
 .rtext p.cut + .tr{margin-bottom:.7em}
+
+.rtext .tr{position:relative;padding-right:22px}
+.rtext .trre{position:absolute;right:0;top:0;border:0;background:none;color:var(--rtr);opacity:.35;cursor:pointer;font-size:13px;padding:0 3px;line-height:1.5}
+.rtext .trre:hover{opacity:1}
