@@ -40,6 +40,7 @@ async function loadAll(){
   if (settings.wordProvider === 'claude') settings.wordProvider = 'ai';
   library = await api.read('library') || { books:[] };
   stats = await api.read('stats') || { days:{} };
+  readToday = await api.read('read-today') || readToday;
   words = await api.read('words') || { known:{}, star:{}, uk:{} };
   words.known = words.known || {}; words.star = words.star || {}; words.uk = words.uk || {};
 }
@@ -201,19 +202,19 @@ function goalStreak(){
   return n;
 }
 const finishedIn = y => library.books.filter(b => b.finished && b.finished.startsWith(String(y)));
-function ring(v, max, color = '#a78bfa', size = 96){
+function ring(v, max, color = '#9ff5f7', size = 96){
   const r = size/2 - 9, c = 2*Math.PI*r, p = Math.min(1, max ? v/max : 0);
-  return `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}"><circle cx="${size/2}" cy="${size/2}" r="${r}" fill="none" stroke="#3a3f4e" stroke-width="9"/>
+  return `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}"><circle cx="${size/2}" cy="${size/2}" r="${r}" fill="none" stroke="#4f5153" stroke-width="9"/>
     ${p > 0 ? `<circle cx="${size/2}" cy="${size/2}" r="${r}" fill="none" stroke="${color}" stroke-width="9" stroke-linecap="round" stroke-dasharray="${c*p} ${c}" transform="rotate(-90 ${size/2} ${size/2})"/>` : ''}
-    <text x="50%" y="52%" text-anchor="middle" dominant-baseline="middle" font-size="${size/4.6}" font-weight="700" fill="#e8eaf0">${Math.round(p*100)}%</text></svg>`;
+    <text x="50%" y="52%" text-anchor="middle" dominant-baseline="middle" font-size="${size/4.6}" font-weight="700" fill="#eceeee">${Math.round(p*100)}%</text></svg>`;
 }
 function daysChart(n = 30){
   const W = 760, H = 170, L = 30, B = 22, T = 12, keys = [];
   for (let i = n-1; i >= 0; i--) keys.push(dkey(addDays(new Date(), -i)));
   const vals = keys.map(dayVal), g = goalVal(), max = Math.max(g * 1.3, ...vals, 1);
   const bw = (W-L-6)/n*0.65, x = i => L + (i+0.5)*(W-L-6)/n, y = v => T + (1 - v/max)*(H-T-B);
-  const bars = vals.map((v,i) => `<rect x="${x(i)-bw/2}" y="${y(v)}" width="${bw}" height="${Math.max(v ? 2 : 0, y(0)-y(v))}" rx="3" fill="${v >= g ? '#a78bfa' : '#6d5fa6'}"><title>${short(keys[i])}: ${v.toFixed(settings.goalType === 'pages' ? 1 : 0)} ${unit()}</title></rect>`).join('');
-  const xl = keys.map((k,i) => i % 5 === 0 || i === n-1 ? `<text x="${x(i)}" y="${H-6}" fill="#9aa0b0" font-size="10.5" text-anchor="middle">${short(k)}</text>` : '').join('');
+  const bars = vals.map((v,i) => `<rect x="${x(i)-bw/2}" y="${y(v)}" width="${bw}" height="${Math.max(v ? 2 : 0, y(0)-y(v))}" rx="3" fill="${v >= g ? '#9ff5f7' : '#4f8f92'}"><title>${short(keys[i])}: ${v.toFixed(settings.goalType === 'pages' ? 1 : 0)} ${unit()}</title></rect>`).join('');
+  const xl = keys.map((k,i) => i % 5 === 0 || i === n-1 ? `<text x="${x(i)}" y="${H-6}" fill="#a4a8aa" font-size="10.5" text-anchor="middle">${short(k)}</text>` : '').join('');
   return `<svg class="chart" viewBox="0 0 ${W} ${H}"><line x1="${L}" x2="${W-6}" y1="${y(g)}" y2="${y(g)}" stroke="#f5a524" stroke-dasharray="6 4"/><text x="${L+4}" y="${y(g)-4}" fill="#f5a524" font-size="10.5">мета ${g} ${unit()}</text>${bars}${xl}</svg>`;
 }
 function updatePills(){
@@ -579,14 +580,30 @@ function trackRead(){
   if (readTo >= 0) {
     const c = cur.book.chapters[ch];
     const end = cur.offs[ch][readTo] + (readE != null ? readE : c.paras[readTo].length);
+    // «сьогодні»: усе, що дочитано на сторінках, які ти бачив, — і вперше, і повторно; один і той самий текст за день рахується раз
+    const from = cur.offs[ch][Math.min(cover !== null ? cover : readTo, readTo)];
+    const add = addReadToday(cur.meta.id, from, end);
+    if (add > 0 && add <= 25000) { day(todayKey()).c += add; saveStats(); }   // великі стрибки не рахуємо
     if (end > cur.meta.read) {
-      const delta = end - cur.meta.read;
-      if (delta <= 25000) { day(todayKey()).c += delta; saveStats(); }   // великі стрибки (перехід по змісту) не рахуємо
       cur.meta.read = end;
       if (!cur.meta.finished && cur.meta.read >= cur.meta.chars * 0.98) { cur.meta.finished = todayKey(); toast('🎉 Книжку прочитано! Вона зарахована в цьогорічні.', 3500); }
     }
   }
   saveLib(); updatePills(); updateStatus();
+}
+// прочитані сьогодні ділянки тексту (лише на цьому пристрої): { d:'2026-11-23', b:{ id:[[від, до], ...] } }
+let readToday = { d:'', b:{} };
+function addReadToday(id, a, b){
+  if (!(b > a)) return 0;
+  const d = todayKey(); if (readToday.d !== d) readToday = { d, b:{} };
+  const rs = readToday.b[id] || [];
+  let add = b - a;
+  for (const [x, y] of rs) add -= Math.max(0, Math.min(b, y) - Math.max(a, x));
+  if (add <= 0) return 0;
+  const all = [...rs, [a, b]].sort((u, v) => u[0] - v[0]), out = [];
+  for (const r of all) { const l = out[out.length - 1]; if (l && r[0] <= l[1]) l[1] = Math.max(l[1], r[1]); else out.push([r[0], r[1]]); }
+  readToday.b[id] = out; api.write('read-today', readToday);
+  return add;
 }
 function savePos(){ if (cur) { trackRead(); saveLib(true); } }
 
