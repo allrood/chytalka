@@ -464,40 +464,78 @@ async function pretranslate(scope){
   if (preRun) { preRun.stop = true; toast('Зупиняю…'); return; }
   const prov = await providerFor('tr');
   if (!prov) { toast('Додай ключ ' + (appInfo.web ? 'Gemini' : 'DeepL') + ' у налаштуваннях'); return; }
+  let ap = await altProvider(); if (ap === 'ai2') ap = null;   // той самий Gemini двічі наперед не перекладаємо
   const ch = cur.meta.pos.ch, chs = scope === 'book' ? cur.book.chapters.map((_, i) => i) : [ch];
   if (scope === 'ask') {
-    const left = ci => trKeysOf(ci).filter(k => !cur.tr[k]).reduce((a, k) => a + trText(k).length, 0);
-    const nCh = left(ch), nBook = cur.book.chapters.reduce((a, _, i) => a + left(i), 0);
+    const left = (ci, alt) => trKeysOf(ci).filter(k => !cur.tr[alt ? altKey(k) : k]).reduce((a, k) => a + trText(k).length, 0);
+    const book = alt => cur.book.chapters.reduce((a, _, i) => a + left(i, alt), 0);
+    const nCh = left(ch) + (ap ? left(ch, 1) : 0), nBook = book() + (ap ? book(1) : 0);
     if (!nBook) { toast('Уся книжка вже перекладена'); return; }
-    const pv = prov === 'deepl' ? 'DeepL' : 'ШІ (Gemini)';
-    const wantBook = confirm(`Перекласти наперед через ${pv}?\n\nOK — усю книжку (${fmt(nBook)} знаків)\nСкасувати — лише цей розділ (${fmt(nCh)} знаків)` + (prov === 'deepl' ? '\n\nБезкоштовний DeepL дає 500 000 знаків на місяць.' : ''));
+    const pv = provName(prov) + (ap ? ' (основний) і ' + provName(ap) + ' (інший варіант)' : '');
+    const wantBook = confirm(`Перекласти наперед через ${pv}?\n\nOK — усю книжку (${fmt(book())} знаків)\nСкасувати — лише цей розділ (${fmt(left(ch))} знаків)` + (prov === 'deepl' || ap === 'deepl' ? '\n\nБезкоштовний DeepL дає 500 000 знаків на місяць.' : ''));
     if (!wantBook && !nCh) { toast('Цей розділ уже перекладено'); return; }
     return pretranslate(wantBook ? 'book' : 'chapter');
   }
-  const keys = chs.flatMap(trKeysOf).filter(k => !cur.tr[k]);
-  const run = preRun = { stop:false }, bookId = cur.meta.id, step = prov === 'deepl' ? 40 : 8;
-  let done = 0, fails = 0;
-  for (let i = 0; i < keys.length && !run.stop; ) {
-    const part = keys.slice(i, i + step);
-    toast(`Перекладаю наперед: ${done} з ${keys.length}… (натисни кнопку ще раз, щоб зупинити)`, 60000);
-    try {
-      const res = prov === 'deepl' ? await deepl(part.map(trText)) : await aiParas(part.map(trText));
-      if (!cur || cur.meta.id !== bookId) break;
-      part.forEach((k, j) => { if (res[j]) { cur.tr[k] = res[j]; setTr(k, res[j], false); } });
-      saveTr(); done += part.length; i += step; fails = 0;
-    } catch (e) {
-      if (++fails > 4) { toast('Зупинено: ' + e.message, 6000); break; }
-      toast(`⚠ ${e.message}. Повтор через ${fails * 15} с…`, fails * 15000);
-      await new Promise(ok => setTimeout(ok, fails * 15000));
+  const all = chs.flatMap(trKeysOf);
+  const jobs = [{ prov, alt:false, ks:all.filter(k => !cur.tr[k]) }];
+  if (ap) jobs.push({ prov:ap, alt:true, ks:all.filter(k => !cur.tr[altKey(k)]) });
+  const run = preRun = { stop:false }, bookId = cur.meta.id, res0 = [];
+  for (const job of jobs) {
+    const step = job.prov === 'deepl' ? 40 : 8, nm = provName(job.prov) + (job.alt ? ' (інший варіант)' : '');
+    let done = 0, fails = 0;
+    for (let i = 0; i < job.ks.length && !run.stop; ) {
+      const part = job.ks.slice(i, i + step);
+      toast(`Перекладаю наперед, ${nm}: ${done} з ${job.ks.length}… (натисни кнопку ще раз, щоб зупинити)`, 60000);
+      try {
+        const res = job.prov === 'deepl' ? await deepl(part.map(trText)) : await aiParas(part.map(trText));
+        if (!cur || cur.meta.id !== bookId) { run.stop = true; break; }
+        part.forEach((k, j) => { if (res[j]) { cur.tr[job.alt ? altKey(k) : k] = res[j]; showTr(k); } });
+        saveTr(); done += part.length; i += step; fails = 0;
+      } catch (e) {
+        if (++fails > 4) { toast(`${nm}: зупинено — ${e.message}`, 6000); await new Promise(ok => setTimeout(ok, 2500)); break; }
+        toast(`⚠ ${nm}: ${e.message}. Повтор через ${fails * 15} с…`, fails * 15000);
+        await new Promise(ok => setTimeout(ok, fails * 15000));
+      }
     }
+    if (job.ks.length) res0.push(`${nm} — ${done}`);
   }
   preRun = null;
   if (view === 'reader') relayoutKeepPage();
-  toast(`Перекладено наперед: ${done} шматків. Переклади збережено${typeof sync !== 'undefined' && sync.refresh ? ' і вони синхронізуються на телефон' : ''}.`, 5000);
+  toast(`Перекладено наперед: ${res0.join(', ') || 'нічого нового'}. Переклади збережено${typeof sync !== 'undefined' && sync.refresh ? ' і вони синхронізуються на телефон' : ''}.`, 6000);
+}
+// альтернативний переклад: інший перекладач (DeepL ↔ Gemini); зберігається поруч під ключем «ключ~» і синхронізується
+const altKey = k => k + '~';
+const provName = p => p === 'deepl' ? 'DeepL' : 'Gemini';
+const trAltOn = new Set();           // шматки, де зараз показано інший варіант
+async function altProvider(){
+  const main = await providerFor('tr'), k = await keys(), ai = !!(await aiWho());
+  if (main === 'deepl') return ai ? 'ai' : null;
+  return k.deepl ? 'deepl' : ai ? 'ai2' : null;      // ai2: той самий ШІ, але просимо інше формулювання
+}
+function markTrDirty(){ if (typeof sync !== 'undefined' && cur) { sync.trDirty = sync.trDirty || {}; sync.trDirty[cur.meta.id] = 1; } }
+function showTr(k){
+  const el = document.querySelector(`[data-tr="${k}"]`); if (!el) return;
+  const alt = trAltOn.has(k) && cur.tr[altKey(k)], t = alt || cur.tr[k];
+  setTr(k, t || '…', !t); el.classList.toggle('alt', !!alt);
+}
+async function toggleAlt(k){
+  if (!cur) return;
+  if (trAltOn.has(k)) { trAltOn.delete(k); showTr(k); relayoutKeepPage(); return; }
+  trAltOn.add(k);
+  if (!cur.tr[altKey(k)]) {
+    const prov = await altProvider();
+    if (!prov) { trAltOn.delete(k); toast('Для іншого варіанта додай ключ Gemini' + (appInfo.web ? '' : ' або DeepL') + ' у налаштуваннях', 4000); return; }
+    const el = document.querySelector(`[data-tr="${k}"] .trt`); if (el) el.textContent = '… шукаю інший варіант (' + provName(prov === 'ai2' ? 'ai' : prov) + ')';
+    try {
+      const t = trText(k), [r] = prov === 'deepl' ? await deepl([t]) : prov === 'ai' ? await aiParas([t]) : await aiAlt([t], [cur.tr[k] || '']);
+      if (r) { cur.tr[altKey(k)] = r; saveTr(); } else trAltOn.delete(k);
+    } catch (e) { trAltOn.delete(k); toast(e.message, 5000); }
+  }
+  showTr(k); relayoutKeepPage();
 }
 function trSlot(ch, i, j){
-  const k = ch + '.' + i + (j != null ? '.' + j : ''), t = cur.tr[k];
-  return `<div class="tr ${t ? '' : 'wait'}" data-tr="${k}"><span class="trt">${t ? esc(t) : '…'}</span><button class="trre" data-retr="${k}" title="Перекласти цей шматок заново">↻</button></div>`;
+  const k = ch + '.' + i + (j != null ? '.' + j : ''), alt = trAltOn.has(k) && cur.tr[altKey(k)], t = alt || cur.tr[k];
+  return `<div class="tr ${t ? '' : 'wait'}${alt ? ' alt' : ''}" data-tr="${k}"><span class="trt">${t ? esc(t) : '…'}</span><button class="trre" data-retr="${k}" title="Перекласти цей шматок заново">↻</button><button class="trre tralt" data-alt="${k}" title="Інший варіант перекладу (DeepL ↔ Gemini)">⇄</button></div>`;
 }
 // текст для ключа перекладу: «розділ.абзац» або «розділ.абзац.шматок»
 function trText(k){
@@ -573,7 +611,7 @@ async function pumpTr(){
     const res = prov === 'deepl' ? await deepl(texts) : await aiParas(texts);
     trFail = 0;
     if (cur && cur.meta.id === bookId) {
-      keys.forEach((k,i) => { if (res[i]) { cur.tr[k] = res[i]; setTr(k, res[i], false); } });
+      keys.forEach((k,i) => { if (res[i]) { cur.tr[k] = res[i]; showTr(k); } });
       saveTr(); relayoutKeepPage();
     }
   } catch (e) {
@@ -660,6 +698,12 @@ async function ai(system, user, maxTokens = 800){
   throw new Error('Додай ключ Gemini у налаштуваннях');
 }
 const jsonFrom = t => { const m = t.match(/[\[{][\s\S]*[\]}]/); return JSON.parse(m ? m[0] : t); };
+// інший варіант від того самого ШІ (коли DeepL недоступний, наприклад на телефоні)
+async function aiAlt(texts, mains){
+  const out = await ai('Ти перекладач художньої літератури з німецької на українську. Відповідай лише JSON-масивом рядків.',
+    'Для кожного німецького фрагмента дай ІНШИЙ варіант українського перекладу, ніж наведений: ближчий до німецького порядку слів і конструкцій, щоб було видно будову оригіналу, але грамотний. Поверни JSON-масив у тому ж порядку.\n\n' + JSON.stringify(texts.map((t, i) => ({ de:t, uk:mains[i] }))), 4000);
+  return jsonFrom(out);
+}
 async function aiParas(texts){
   const out = await ai('Ти перекладач художньої літератури з німецької на українську. Перекладай точно і природно, зберігаючи стиль. Відповідай лише JSON-масивом рядків.',
     'Переклади кожен абзац українською. Поверни JSON-масив перекладів у тому ж порядку.\n\n' + JSON.stringify(texts), 4000);
@@ -1010,7 +1054,8 @@ document.addEventListener('click', async e => {
   }
   if (d.chap) { savePos(); cur.meta.pos = { ch:+d.chap, p:0 }; moved(); renderReader(); return; }
   if (d.pg) { turnPage(+d.pg); return; }
-  if (d.retr) { if (!cur) return; delete cur.tr[d.retr]; if (typeof sync !== 'undefined') { sync.trDirty = sync.trDirty || {}; sync.trDirty[cur.meta.id] = 1; } setTr(d.retr, '…', true); trFail = 0; trQueue.add(d.retr); pumpTr(); return; }
+  if (d.retr) { if (!cur) return; if (trAltOn.has(d.retr)) { delete cur.tr[altKey(d.retr)]; markTrDirty(); trAltOn.delete(d.retr); toggleAlt(d.retr); return; } delete cur.tr[d.retr]; markTrDirty(); setTr(d.retr, '…', true); trFail = 0; trQueue.add(d.retr); pumpTr(); return; }
+  if (d.alt) { toggleAlt(d.alt); return; }
   if (d.pre) { pretranslate(d.pre); return; }
   if (d.par) { settings.parallel = d.par === '2' ? 'side' : d.par === '1'; saveSettings(); savePos(); renderReader(); return; }
   if (d.font) { settings.font = Math.max(14, Math.min(30, settings.font + +d.font)); saveSettings(); document.documentElement.style.setProperty('--rf', settings.font + 'px'); relayoutKeep(); return; }
