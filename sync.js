@@ -221,16 +221,16 @@ async function syncNow(manual){
     if (syncAgain) { syncAgain = false; scheduleSync(1500); }
   }
 }
-// після змін — не частіше ніж раз на 20 с (читання зберігає час кожні 5 с); зміна місця читання — через 3 с
+// після змін — не частіше ніж раз на 2 хв; місце читання відправляється одразу, коли згортаєш/перемикаєш вікно, і підтягується, коли повертаєшся
 let syncDue = 0;
 function scheduleSync(ms){
   if (!sync.refresh) return;
-  const due = Date.now() + (ms || 20000);
+  const due = Date.now() + (ms || 120000);
   if (syncTimer && syncDue <= due) return;
   clearTimeout(syncTimer); syncDue = due;
   syncTimer = setTimeout(() => { syncTimer = null; syncNow(false); }, due - Date.now());
 }
-function autoSync(){ if (sync.refresh && Date.now() - lastAutoSync > 20000) { lastAutoSync = Date.now(); syncNow(false); } }
+function autoSync(){ if (sync.refresh && Date.now() - lastAutoSync > 60000) { lastAutoSync = Date.now(); syncNow(false); } }
 window.addEventListener('focus', autoSync);
 // повернулись у програму — одразу підтягуємо місце з іншого пристрою; згорнули — одразу відправляємо своє
 function pushNow(){ if (!sync.refresh) return; if (view === 'reader') savePos(); clearTimeout(syncTimer); syncTimer = null; syncNow(false); }
@@ -240,7 +240,7 @@ document.addEventListener('visibilitychange', () => {
 });
 window.addEventListener('pagehide', pushNow);
 window.addEventListener('blur', () => { if (view === 'reader' && cur && Date.now() - (sync.last || 0) > 5000) pushNow(); });
-setInterval(() => { if (sync.refresh && !syncBusy) syncNow(false); }, 5 * 60000);
+setInterval(() => { if (sync.refresh && !syncBusy) syncNow(false); }, 15 * 60000);
 
 // книжка є в бібліотеці, але текст ще не завантажено на цей пристрій
 async function fetchBookText(id){

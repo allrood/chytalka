@@ -393,7 +393,7 @@ function renderReader(){
 /* ---------- посторінкове листання ---------- */
 const pg = { cur:0, n:1, step:1, gap:60, kept:-1 };
 // користувач сам перейшов в інше місце (розділ, слово з вортшатцу) — це найновіша позиція
-function moved(){ cur.meta.last = new Date().toISOString(); if (typeof scheduleSync === 'function') scheduleSync(3000); }
+function moved(){ cur.meta.last = new Date().toISOString(); if (typeof scheduleSync === 'function') scheduleSync(); }
 function layoutPages(){
   const wrap = $('#rwrap'), page = $('#rpage'), t = $('#rtext'); if (!wrap || !t) return;
   const avail = wrap.clientWidth - 2 * (innerWidth <= 700 ? 16 : 56);   // місце для стрілок по боках (на телефоні їх немає)
@@ -588,7 +588,7 @@ function trackRead(){
     const np = first ? +first.closest('[data-p]').dataset.p : (top !== null ? top : cover), no = first ? +first.dataset.o : 0;
     if (np !== null && (np !== cur.meta.pos.p || no !== (cur.meta.pos.o || 0))) {
       cur.meta.pos = { ch, p:np, o:no }; cur.meta.last = new Date().toISOString();
-      if (typeof scheduleSync === 'function') scheduleSync(3000);   // місце передаємо швидко
+      if (typeof scheduleSync === 'function') scheduleSync();   // місце піде разом з іншими змінами або одразу при згортанні вікна
     }
     pg.kept = pg.cur;
   }
