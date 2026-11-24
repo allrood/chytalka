@@ -1176,6 +1176,7 @@ function showUpdate(u){
     const s = await api.sample();
     if (s) { try { await importRaw(s); library.sampleAdded = true; saveLib(true); } catch (e) {} }
   }
+  if (typeof songsFromHash === 'function') songsFromHash();
   render();
   syncStart();
   const u = await api.checkUpdate(); if (u.available) showUpdate(u.available);

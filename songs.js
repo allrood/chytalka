@@ -73,7 +73,11 @@ async function addSong(url, lyrics){
 }
 
 /* ---------- екрани ---------- */
+// посилання виду …/#song=<id> відкриває одразу пісню (наприклад, з ПК-версії у браузері, де є YouTube Premium)
+let songPending = null;
+function songsFromHash(){ const m = (location.hash || '').match(/^#song=([\w-]+)/); if (m) { songPending = m[1]; songOpen = null; view = 'songs'; } }
 function renderSongs(){
+  if (songPending && songs[songPending] && !songs[songPending].del) { songOpen = songPending; songPending = null; try { history.replaceState(null, '', location.pathname); } catch (e) {} }
   if (songOpen && songs[songOpen] && !songs[songOpen].del) return renderSong(songs[songOpen]);
   songOpen = null; ytStop();
   const list = songList();
@@ -84,7 +88,8 @@ function renderSongs(){
     <div class="hint">Gemini послухає пісню, запише текст з таймкодами, перекладе кожен рядок і пояснить граматику. Працює з безкоштовним ключем Gemini.</div>
     <div class="row" style="margin-top:10px"><input class="inp" id="songUrl" placeholder="https://www.youtube.com/watch?v=…" style="flex:1;min-width:220px"><button class="btn primary" data-act="songadd" ${songBusy ? 'disabled' : ''}>Зробити переклад</button></div>
     <details class="songlyr"><summary>Є готовий текст? Встав його — так точніше</summary><textarea class="inp" id="songLyr" rows="6" placeholder="Текст пісні мовою оригіналу"></textarea></details>
-    ${songBusy ? `<div class="hint" style="margin-top:8px"><span class="spin"></span> ${esc(songBusy.step)}</div>` : ''}
+    ${songPending ? '<div class="hint" style="margin-top:8px"><span class="spin"></span> Чекаю, поки пісня підтягнеться із синхронізації… (якщо цей браузер ще не підключено до синхронізації — підключи на головній)</div>' : ''}
+  ${songBusy ? `<div class="hint" style="margin-top:8px"><span class="spin"></span> ${esc(songBusy.step)}</div>` : ''}
   </div>
   <h2>Колекція <span class="hint">${list.length}</span></h2>
   ${list.length ? `<div class="songgrid">${list.map(s => `<button class="songcard" data-song="${s.id}">
@@ -110,7 +115,8 @@ function renderSong(s){
       <div id="ytSlot"></div>
       ${s.yt && !s.timed ? '<div class="hint">Таймкодів немає — підсвічування рядків не працює, але клік по рядку все одно відкриє відео.</div>' : ''}
       ${s.grammar && s.grammar.length ? `<div class="card songgram"><h3>Граматика в пісні</h3>${s.grammar.map(g => `<details><summary>${esc(g.title)}</summary><div>${esc(g.text)}</div></details>`).join('')}</div>` : ''}
-      ${s.yt ? `<div class="hint" style="margin-top:8px"><a href="#" data-url="https://www.youtube.com/watch?v=${s.yt}">Відкрити на YouTube у браузері ↗</a> — там, де ви вже ввійшли в акаунт.</div>` : ''}
+      ${s.yt && !appInfo.web ? `<div class="hint" style="margin-top:8px"><a href="#" data-url="https://allrood.github.io/chytalka/#song=${s.id}">▶ Слухати в браузері без реклами ↗</a> — відкриє цю пісню у веб-версії читалки в Chrome, де ви ввійшли в YouTube Premium (там теж буде текст, переклад і підсвічування).</div>` : ''}
+      ${s.yt ? `<div class="hint" style="margin-top:4px"><a href="#" data-url="https://www.youtube.com/watch?v=${s.yt}">Відкрити на YouTube ↗</a></div>` : ''}
     </div>
     <div class="song rtext-like${songUi.tr ? '' : ' notr'}${songUi.notes ? '' : ' nonotes'}${songUi.side ? ' sside' : ''}" id="songText">
       ${s.lines.map((l, i) => `<div class="sl" data-li="${i}" data-t="${l.t}">
@@ -186,3 +192,4 @@ function mergeSongs(a, b){
   for (const id in b) if (!out[id] || (b[id].upd || '') > (out[id].upd || '')) out[id] = b[id];
   return out;
 }
+window.addEventListener('hashchange', () => { if (/^#song=/.test(location.hash) && typeof render === 'function') { songsFromHash(); render(); } });
