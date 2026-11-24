@@ -1174,7 +1174,7 @@ function showUpdate(u){
   D = JSON.parse(dd.dict); F = JSON.parse(dd.forms);
   if (!library.books.length && !library.sampleAdded) {
     const s = await api.sample();
-    if (s) { try { await importRaw(s); library.sampleAdded = true; saveLib(true); } catch (e) {} }
+    if (s) { try { const m = await importRaw(s); m.sample = true; library.sampleAdded = true; saveLib(true); } catch (e) {} }
   }
   if (typeof songsFromHash === 'function') songsFromHash();
   render();

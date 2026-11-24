@@ -75,7 +75,13 @@ function mergeAll(base, local, remote){
 }
 // одна й та сама книжка, додана на різних пристроях окремо (напр. вбудована тестова), має різні id — зливаємо в одну
 const bookKey = b => [String(b.title || '').trim().toLowerCase(), String(b.author || '').trim().toLowerCase(), b.chars || 0].join('|');
+// вбудована тестова книжка (інше видання, тож символів інша кількість): якщо є «справжня» така сама книжка — тестову прибираємо.
+// Прогрес і переклади з неї НЕ переносимо: розділи в цих виданнях різні, місце читання зіпсувалось би.
+const isSample = b => b.sample || (b.chars === 120841 && String(b.title || '').trim() === 'Die Verwandlung');
+const workKey = b => [String(b.title || '').trim().toLowerCase(), String(b.author || '').trim().toLowerCase()].join('|');
 function dedupe(m){
+  const real = new Set(m.books.filter(b => !isSample(b)).map(workKey));
+  m.books = m.books.filter(b => !(isSample(b) && real.has(workKey(b))));
   const byKey = {}, remap = {};
   const keepOf = (a, b) => (a.added || '9') < (b.added || '9') || ((a.added || '') === (b.added || '') && a.id < b.id) ? [a, b] : [b, a];
   const books = [];
