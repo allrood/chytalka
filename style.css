@@ -263,3 +263,13 @@ code{background:#3f4244;padding:1px 6px;border-radius:4px;font-size:12px}
   .song{font-size:17px}
   .song .sl{grid-template-columns:34px 1fr;padding:5px 6px}
 }
+/* пісні: переклад і пояснення праворуч від рядка, наведення підсвічує пару */
+.songlay.wide{grid-template-columns:minmax(260px,30%) 1fr}
+.song.sside .sb{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:0 22px;align-items:start}
+.song.sside .suk{margin-top:.2em;font-size:.78em}
+.song.sside.notr.nonotes .sb{grid-template-columns:1fr}
+.song.sside .sl:hover{background:rgba(159,245,247,.13)}
+.song.sside .sl:hover .suk{color:var(--text)}
+.song.sside .sl:hover .snote{border-left-color:var(--accent)}
+.song.sside .sl.on:hover{background:rgba(159,245,247,.2)}
+@media (max-width:900px){ .song.sside .sb{display:block} .songlayseg{display:none} }

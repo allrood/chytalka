@@ -7,7 +7,7 @@
 let songs = {};                 // { id: { id, yt, title, artist, lines:[{t,de,uk,note}], grammar:[{title,text}], added, upd, del? } }
 let songOpen = null;            // id відкритої пісні
 let songBusy = null;            // { yt, step } — поки Gemini працює
-let songUi = { tr:true, notes:true };
+let songUi = { tr:true, notes:true, side:true };
 try { songUi = { ...songUi, ...JSON.parse(localStorage.getItem('chytalka-song-ui') || '{}') }; } catch (e) {}
 const saveSongUi = () => { try { localStorage.setItem('chytalka-song-ui', JSON.stringify(songUi)); } catch (e) {} };
 
@@ -101,21 +101,22 @@ function renderSong(s){
     <div class="songttl"><b>${esc(s.title)}</b>${s.artist ? ` <span class="hint">· ${esc(s.artist)}</span>` : ''}</div>
     <div class="spacer"></div>
     <div class="seg"><button class="${songUi.tr ? 'on' : ''}" data-act="songtr">Переклад</button><button class="${songUi.notes ? 'on' : ''}" data-act="songnotes">💡 Пояснення</button></div>
+    <div class="seg songlayseg"><button class="${songUi.side ? '' : 'on'}" data-act="songside" data-v="0" title="Переклад під рядком">Під рядком</button><button class="${songUi.side ? 'on' : ''}" data-act="songside" data-v="1" title="Переклад праворуч від рядка">Праворуч</button></div>
     <button class="btn sm" data-act="songredo" title="Попросити Gemini зробити текст і переклад заново">↻ Заново</button>
     <button class="btn sm danger" data-act="songdel" title="Видалити з колекції">🗑</button>
   </div>
-  <div class="songlay">
+  <div class="songlay${songUi.side ? ' wide' : ''}">
     <div class="songside">
       <div id="ytSlot"></div>
       ${s.yt && !s.timed ? '<div class="hint">Таймкодів немає — підсвічування рядків не працює, але клік по рядку все одно відкриє відео.</div>' : ''}
       ${s.grammar && s.grammar.length ? `<div class="card songgram"><h3>Граматика в пісні</h3>${s.grammar.map(g => `<details><summary>${esc(g.title)}</summary><div>${esc(g.text)}</div></details>`).join('')}</div>` : ''}
       ${s.yt && !appInfo.web ? `<div class="hint" style="margin-top:8px">Реклама у відео? <a href="#" data-act="ytlogin">Увійти в YouTube</a> (без реклами — лише з YouTube Premium).</div>` : ''}
     </div>
-    <div class="song rtext-like${songUi.tr ? '' : ' notr'}${songUi.notes ? '' : ' nonotes'}" id="songText">
+    <div class="song rtext-like${songUi.tr ? '' : ' notr'}${songUi.notes ? '' : ' nonotes'}${songUi.side ? ' sside' : ''}" id="songText">
       ${s.lines.map((l, i) => `<div class="sl" data-li="${i}" data-t="${l.t}">
         <span class="st">${s.timed ? fmtT(l.t) : ''}</span>
         <div class="sb"><div class="sde" data-p="${i}" data-sg="${s.id}">${paraHTML(l.de, 0, i)}</div>
-        ${l.uk ? `<div class="suk">${esc(l.uk)}</div>` : ''}${l.note ? `<div class="snote">💡 ${esc(l.note)}</div>` : ''}</div></div>`).join('')}
+        <div class="sx">${l.uk ? `<div class="suk">${esc(l.uk)}</div>` : ''}${l.note ? `<div class="snote">💡 ${esc(l.note)}</div>` : ''}</div></div></div>`).join('')}
       ${s.grammar && s.grammar.length ? `<div class="card songgram songgram2"><h3>Граматика в пісні</h3>${s.grammar.map(g => `<details><summary>${esc(g.title)}</summary><div>${esc(g.text)}</div></details>`).join('')}</div>` : ''}
     </div>
   </div>`;
@@ -171,6 +172,7 @@ document.addEventListener('click', async e => {
   if (act === 'songadd') return addSong($('#songUrl').value, ($('#songLyr').value || '').trim());
   if (act === 'songback') { songOpen = null; ytStop(); render(); return; }
   if (act === 'songtr') { songUi.tr = !songUi.tr; saveSongUi(); $('#songText').classList.toggle('notr', !songUi.tr); a.classList.toggle('on', songUi.tr); return; }
+  if (act === 'songside') { songUi.side = a.dataset.v === '1'; saveSongUi(); $('#songText').classList.toggle('sside', songUi.side); document.querySelector('.songlay').classList.toggle('wide', songUi.side); document.querySelectorAll('.songlayseg button').forEach(b => b.classList.toggle('on', b === a)); return; }
   if (act === 'songnotes') { songUi.notes = !songUi.notes; saveSongUi(); $('#songText').classList.toggle('nonotes', !songUi.notes); a.classList.toggle('on', songUi.notes); return; }
   if (act === 'songdel') { const s = songs[songOpen]; if (!s || !confirm(`Видалити «${s.title}» з колекції?`)) return; songs[s.id] = { id:s.id, del:true, upd:new Date().toISOString() }; saveSongs(); songOpen = null; ytStop(); render(); return; }
   if (act === 'songredo') { const s = songs[songOpen]; if (!s) return; if (!confirm('Попросити Gemini зробити текст і переклад заново? Поточний варіант заміниться.')) return; songOpen = null; const yt = s.yt; const lyr = yt ? '' : s.lines.map(l => l.de).join('\n'); delete songs[s.id].yt; songs[s.id].del = true; saveSongs(); return addSong(yt || '', lyr); }
