@@ -212,6 +212,16 @@ async function syncNow(manual){
       if (total > remoteN || dirty) { const u = await dbxPut(`${DBX_ROOT}/tr/${id}.json`, all, rev); if (u.conflict) { syncAgain = true; continue; } rev = u.rev; }
       sync.tr[id] = rev; sync.trN[id] = total; if (sync.trDirty) delete sync.trDirty[id];
     }
+    // 4) пісні: один файл, за кожною піснею перемагає новіша
+    const top = await dbxList(DBX_ROOT);
+    if (top.songs !== sync.songsRev || sync.songsDirty) {
+      const g = top.songs ? await dbxGet(DBX_ROOT + '/songs.json') : null;
+      const remote = g ? g.data : {}, all = mergeSongs(remote, songs);
+      if (!same(all, songs)) { songs = all; await api.write('songs', songs); if (view === 'songs') render(); }
+      let rev = g ? g.rev : null;
+      if (!same(all, remote)) { const u = await dbxPut(DBX_ROOT + '/songs.json', all, rev); if (u.conflict) syncAgain = true; else rev = u.rev; }
+      if (!syncAgain) { sync.songsRev = rev; sync.songsDirty = 0; }
+    }
     sync.last = Date.now(); sync.err = null; sync.status = 'ok';
   } catch (e) {
     sync.status = 'err'; sync.err = String(e.message || e);

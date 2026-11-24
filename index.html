@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https:;">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' https:; frame-src https://www.youtube.com https://www.youtube-nocookie.com; img-src 'self' data: blob: https://i.ytimg.com;">
 <meta name="theme-color" content="#373b3c">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
@@ -25,6 +25,7 @@
 <aside class="side">
   <button class="nav" data-view="home">🏠 <span>Бібліотека</span></button>
   <button class="nav" data-view="reader">📖 <span>Читання</span></button>
+  <button class="nav" data-view="songs">🎵 <span>Пісні</span></button>
   <button class="nav" data-view="vocab">🧠 <span>Вортшатц</span></button>
   <button class="nav" data-view="mywords">★ <span>Мої слова</span></button>
   <button class="nav" data-view="settings">⚙ <span>Налаштування</span></button>
@@ -36,6 +37,7 @@
 <div id="toast"></div>
 <script src="web-api.js"></script>
 <script src="app.js"></script>
+<script src="songs.js"></script>
 <script src="sync.js"></script>
 </body>
 </html>

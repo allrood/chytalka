@@ -42,6 +42,7 @@ async function loadAll(){
   stats = await api.read('stats') || { days:{} };
   readToday = await api.read('read-today') || readToday;
   words = await api.read('words') || { known:{}, star:{}, uk:{} };
+  if (typeof loadSongs === 'function') await loadSongs();
   words.known = words.known || {}; words.star = words.star || {}; words.uk = words.uk || {};
 }
 const syncSoon = () => { if (typeof scheduleSync === 'function') scheduleSync(); };
@@ -241,7 +242,8 @@ function render(){
   closePop();
   updatePills();
   $('#rstatus')?.remove();
-  ({ home:renderHome, reader:renderReader, vocab:renderVocab, mywords:renderMyWords, settings:renderSettings })[view]();
+  if (view !== 'songs' && typeof ytStop === 'function') ytStop();
+  ({ home:renderHome, reader:renderReader, vocab:renderVocab, mywords:renderMyWords, settings:renderSettings, songs:renderSongs })[view]();
 }
 function go(v){ if (view === 'reader') savePos(); view = v; window.scrollTo(0, 0); render(); }
 
@@ -698,11 +700,12 @@ async function claude(system, user, maxTokens = 800){
   if (!r.ok) { let m = ''; try { m = JSON.parse(r.text).error.message; } catch (e) {} throw new Error('Claude: помилка ' + r.status + (m ? ' — ' + m : r.status ? '' : ' (немає інтернету?)')); }
   return JSON.parse(r.text).content.map(c => c.text || '').join('');
 }
-async function gemini(system, user){
+async function gemini(system, user, opts = {}){
   const key = await api.getSecret('gemini'); if (!key) throw new Error('Немає ключа Gemini');
   const call = model => api.http({ url:`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, method:'POST',
     headers:{ 'x-goog-api-key':key.trim(), 'Content-Type':'application/json' },
-    body:JSON.stringify({ system_instruction:{ parts:[{ text:system }] }, contents:[{ role:'user', parts:[{ text:user }] }] }) });
+    body:JSON.stringify({ system_instruction:{ parts:[{ text:system }] }, contents:[{ role:'user', parts:Array.isArray(user) ? user : [{ text:user }] }],
+      ...(opts.json || opts.lowMedia ? { generationConfig:{ ...(opts.json ? { responseMimeType:'application/json' } : {}), ...(opts.lowMedia ? { mediaResolution:'MEDIA_RESOLUTION_LOW' } : {}) } } : {}) }) });
   // якщо модель перевантажена (503), зникла (404) чи вичерпала свій ліміт (429) — пробуємо наступну
   const first = settings.geminiModel || 'gemini-flash-latest';
   const models = [...new Set([first, 'gemini-flash-lite-latest', 'gemini-2.5-flash', 'gemini-2.5-flash-lite'])];
@@ -756,11 +759,11 @@ function sentenceAt(text, off){
 async function openPop(el){
   document.querySelectorAll('.w.sel').forEach(x => x.classList.remove('sel'));
   el.classList.add('sel');
-  const p = el.closest('[data-p]'), pi = +p.dataset.p, ch = cur.meta.pos.ch;
-  const text = cur.book.chapters[ch].paras[pi], word = el.textContent;
+  const p = el.closest('[data-p]'), pi = +p.dataset.p, sg = p.dataset.sg && songs[p.dataset.sg];
+  const text = sg ? sg.lines[pi].de : cur.book.chapters[cur.meta.pos.ch].paras[pi], word = el.textContent;
   const sent = sentenceAt(text, +el.dataset.o);
   const cands = lookup(word);
-  popCtx = { word, sent, cands, el, ai:null, sentTr:null, expl:null };
+  popCtx = { word, sent:sg ? text : sent, cands, el, ai:null, sentTr:null, expl:null, b:sg ? sg.title + (sg.artist ? ' — ' + sg.artist : '') : '' };
   drawPop(); placePop(el);
   const prov = await providerFor('word');
   const best = cands[0];
@@ -819,7 +822,7 @@ async function popAction(a){
   const c = popCtx; if (!c) return;
   const l = c.cands[0]?.l;
   if (a === 'closepop') return closePop();
-  if (a === 'star' && l) { if (words.star[l]) delete words.star[l]; else words.star[l] = { s:c.sent, w:c.word, b:cur?.meta.title || '', d:todayKey() }; saveWords(); drawPop(); c.el.classList.toggle('star', !!words.star[l]); vocabCache = {}; return; }
+  if (a === 'star' && l) { if (words.star[l]) delete words.star[l]; else words.star[l] = { s:c.sent, w:c.word, b:c.b || cur?.meta.title || '', d:todayKey() }; saveWords(); drawPop(); c.el.classList.toggle('star', !!words.star[l]); vocabCache = {}; return; }
   if (a === 'known' && l) { if (words.known[l]) delete words.known[l]; else words.known[l] = 1; saveWords(); drawPop(); vocabCache = {}; return; }
   if (a === 'sent') {
     const prov = await providerFor('tr'); if (!prov) { toast('Додай ключ DeepL або Gemini у налаштуваннях'); return; }
@@ -1061,7 +1064,7 @@ async function renderSettings(){
    ========================================================= */
 document.addEventListener('click', async e => {
   if (Date.now() - swiped < 400) return;   // після свайпу не відкривати слово
-  const w = e.target.closest('.rtext .w');
+  const w = e.target.closest('.rtext .w, .song .w');
   if (w) { const was = popCtx && popCtx.el === w; if (popCtx) closePop(); if (!was) openPop(w); return; }
   if (!e.target.closest('#pop') && popCtx) { closePop(); return; }
   if ($('#preMenu') && !e.target.closest('#preMenu,[data-pre]')) closePreMenu();
@@ -1158,6 +1161,8 @@ function showUpdate(u){
    Старт
    ========================================================= */
 (async function init(){
+  // чекаємо, поки підвантажаться всі скрипти (songs.js, sync.js)
+  if (document.readyState === 'loading') await new Promise(ok => document.addEventListener('DOMContentLoaded', ok));
   await loadAll();
   appInfo = await api.info();
   $('#sideFoot').textContent = 'версія ' + appInfo.version;

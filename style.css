@@ -217,3 +217,49 @@ code{background:#3f4244;padding:1px 6px;border-radius:4px;font-size:12px}
 .pmrow b{width:100%;font-size:12.5px}
 .pmrow .btn{display:inline-flex;flex-direction:column;align-items:flex-start;line-height:1.25}
 .pmrow .btn small{font-weight:400;opacity:.75;font-size:11px}
+
+/* ---------- Пісні ---------- */
+.songadd{margin-top:14px;max-width:900px}
+.songlyr{margin-top:10px}
+.songlyr summary{cursor:pointer;color:var(--muted);font-size:12.5px}
+.songlyr textarea{width:100%;margin-top:6px;resize:vertical;font-family:inherit}
+.songgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px}
+.songcard{background:var(--card);border:0;border-radius:10px;padding:0 0 10px;cursor:pointer;text-align:left;display:flex;flex-direction:column;gap:3px;overflow:hidden;color:var(--text)}
+.songcard:hover{background:var(--card2)}
+.songcard img,.songcard .noimg{width:100%;aspect-ratio:16/9;object-fit:cover;display:block;margin-bottom:6px;background:#2c2f30}
+.songcard .noimg{display:grid;place-items:center;font-size:34px}
+.songcard b,.songcard span{padding:0 10px}
+.songcard span{color:var(--muted);font-size:12px}
+.songtop{position:sticky;top:50px;z-index:3;background:var(--bg);padding:8px 0;margin-top:-8px}
+.songttl{font-size:15px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.songlay{display:grid;grid-template-columns:minmax(280px,40%) 1fr;gap:26px;align-items:start;margin-top:8px}
+.songside{position:sticky;top:108px}
+#ytWrap{position:relative;width:100%;aspect-ratio:16/9;border-radius:10px;overflow:hidden;background:#000}
+#ytWrap iframe{position:absolute;inset:0;width:100%;height:100%;border:0}
+.songgram{margin-top:12px}
+.songgram details{border-top:1px solid var(--border);padding:7px 0}
+.songgram summary{cursor:pointer;font-weight:600}
+.songgram details div{color:var(--text);font-size:13px;line-height:1.55;margin-top:5px}
+.song{color:var(--text);font-family:Georgia,"Times New Roman",serif;font-size:calc(var(--rf,20px) * .95);line-height:1.5;padding-bottom:40vh}
+.song .sl{display:grid;grid-template-columns:44px 1fr;gap:8px;padding:6px 10px;border-radius:8px;cursor:pointer;transition:background .15s}
+.song .sl:hover{background:rgba(159,245,247,.07)}
+.song .sl.on{background:rgba(159,245,247,.16)}
+.song .sl.on .sde{color:#fff}
+.song .st{font-family:"Segoe UI",sans-serif;font-size:11.5px;color:var(--muted);padding-top:.45em}
+.song .suk{font-family:"Segoe UI",sans-serif;font-size:.74em;color:#b9bfc0;margin-top:2px}
+.song .snote{font-family:"Segoe UI",sans-serif;font-size:.68em;color:var(--muted);margin-top:3px;padding-left:8px;border-left:2px solid rgba(159,245,247,.4)}
+.song.notr .suk,.song.nonotes .snote{display:none}
+.song .w{cursor:pointer;border-radius:3px}
+.song .w:hover{background:rgba(159,245,247,.22)}
+.song .w.sel{background:rgba(159,245,247,.45)}
+.song .w.star{border-bottom:2px solid var(--orange)}
+.songgram2{display:none}
+@media (max-width:900px){
+  .songlay{grid-template-columns:1fr;gap:10px}
+  .songside{position:sticky;top:calc(48px + env(safe-area-inset-top));z-index:2;background:var(--bg);padding-bottom:6px}
+  .songside .songgram,.songside .hint{display:none}
+  .songgram2{display:block;margin-top:16px}
+  .songtop{position:static}
+  .song{font-size:17px}
+  .song .sl{grid-template-columns:34px 1fr;padding:5px 6px}
+}
