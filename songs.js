@@ -110,7 +110,7 @@ function renderSong(s){
       <div id="ytSlot"></div>
       ${s.yt && !s.timed ? '<div class="hint">Таймкодів немає — підсвічування рядків не працює, але клік по рядку все одно відкриє відео.</div>' : ''}
       ${s.grammar && s.grammar.length ? `<div class="card songgram"><h3>Граматика в пісні</h3>${s.grammar.map(g => `<details><summary>${esc(g.title)}</summary><div>${esc(g.text)}</div></details>`).join('')}</div>` : ''}
-      ${s.yt && !appInfo.web ? `<div class="hint" style="margin-top:8px">Реклама у відео? <a href="#" data-act="ytlogin">Увійти в YouTube</a> (без реклами — лише з YouTube Premium).</div>` : ''}
+      ${s.yt ? `<div class="hint" style="margin-top:8px"><a href="#" data-url="https://www.youtube.com/watch?v=${s.yt}">Відкрити на YouTube у браузері ↗</a> — там, де ви вже ввійшли в акаунт.</div>` : ''}
     </div>
     <div class="song rtext-like${songUi.tr ? '' : ' notr'}${songUi.notes ? '' : ' nonotes'}${songUi.side ? ' sside' : ''}" id="songText">
       ${s.lines.map((l, i) => `<div class="sl" data-li="${i}" data-t="${l.t}">
