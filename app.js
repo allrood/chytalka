@@ -708,13 +708,16 @@ async function gemini(system, user, opts = {}){
       ...(opts.json || opts.lowMedia ? { generationConfig:{ ...(opts.json ? { responseMimeType:'application/json' } : {}), ...(opts.lowMedia ? { mediaResolution:'MEDIA_RESOLUTION_LOW' } : {}) } } : {}) }) });
   // якщо модель перевантажена (503), зникла (404) чи вичерпала свій ліміт (429) — пробуємо наступну
   const first = settings.geminiModel || 'gemini-flash-latest';
-  const models = [...new Set([first, 'gemini-flash-lite-latest', 'gemini-2.5-flash', 'gemini-2.5-flash-lite'])];
-  let r;
+  // старі моделі Google поступово вимикає (404) — тому спершу «-latest», потім актуальні 3.5, а 2.5 лише наостанок
+  const models = [...new Set([first, 'gemini-flash-latest', 'gemini-3.5-flash', 'gemini-flash-lite-latest', 'gemini-3.5-flash-lite', 'gemini-2.5-flash'])];
+  let r, keep = null;
   for (let i = 0; i < models.length; i++) {
     r = await call(models[i]);
-    if (r.status === 503 || r.status === 500) { await new Promise(ok => setTimeout(ok, 700)); r = await call(models[i]); }
+    if (r.status === 503 || r.status === 500) { await new Promise(ok => setTimeout(ok, 1500)); r = await call(models[i]); }
     if (![404, 429, 500, 503].includes(r.status)) break;
+    if (r.status !== 404 && !keep) keep = r;      // для повідомлення беремо справжню причину, а не «модель зникла»
   }
+  if (keep && [404, 429, 500, 503].includes(r.status)) r = keep;
   let m = ''; try { m = JSON.parse(r.text).error.message; } catch (e) {}
   if (r.status === 400 && /api key/i.test(m)) throw new Error('Gemini: ключ не підходить');
   if (r.status === 403) throw new Error('Gemini: ключ не підходить або API не ввімкнено');
